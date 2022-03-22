@@ -82,7 +82,7 @@ class ZoneChangeHandlerSpec extends AnyWordSpec with Matchers with MockitoSugar 
       .deleteRecordSetsInZone(db,deleteChange.zone.id, deleteChange.zone.name)
     doReturn(IO.pure(()))
       .when(mockRecordSetDataRepo)
-      .deleteRecordSetDatasInZone(db, deleteChange.zone.id, deleteChange.zone.name)}
+      .deleteRecordSetDataInZone(db, deleteChange.zone.id, deleteChange.zone.name)}
     doReturn(IO.pure(deleteChange)).when(mockChangeRepo).save(any[ZoneChange])
 
     test(deleteChange).unsafeRunSync()
@@ -104,7 +104,7 @@ class ZoneChangeHandlerSpec extends AnyWordSpec with Matchers with MockitoSugar 
       .deleteRecordSetsInZone(db,deleteChange.zone.id, deleteChange.zone.name)
     doReturn(IO.raiseError(new Throwable("error")))
       .when(mockRecordSetDataRepo)
-      .deleteRecordSetDatasInZone(db,deleteChange.zone.id, deleteChange.zone.name)}
+      .deleteRecordSetDataInZone(db,deleteChange.zone.id, deleteChange.zone.name)}
     doReturn(IO.pure(deleteChange)).when(mockChangeRepo).save(any[ZoneChange])
 
     test(deleteChange).unsafeRunSync()

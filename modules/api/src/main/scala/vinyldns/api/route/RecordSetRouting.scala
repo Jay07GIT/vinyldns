@@ -44,6 +44,17 @@ case class ListGlobalRecordSetsResponse(
     nameSort: NameSort
 )
 
+case class ListGlobalRecordSetDataResponse(
+                                         recordSets: List[RecordSetDataGlobalInfo],
+                                         startFrom: Option[String] = None,
+                                         nextId: Option[String] = None,
+                                         maxItems: Option[Int] = None,
+                                         recordNameFilter: String,
+                                         recordTypeFilter: Option[Set[RecordType]] = None,
+                                         recordOwnerGroupFilter: Option[String] = None,
+                                         nameSort: NameSort
+                                       )
+
 case class ListRecordSetsByZoneResponse(
     recordSets: List[RecordSetListInfo],
     startFrom: Option[String] = None,
@@ -137,7 +148,7 @@ class RecordSetRoute(
       }
   } ~
     path("recordsets") {
-      (get & monitor("Endpoint.listRecordSets")) {
+      (get & monitor("Endpoint.listRecordSetData")) {
         parameters(
           "startFrom".?,
           "maxItems".as[Int].?(DEFAULT_MAX_ITEMS),
@@ -162,7 +173,7 @@ class RecordSetRoute(
               ) {
                 authenticateAndExecute(
                   recordSetService
-                    .listRecordSets(
+                    .listRecordSetData(
                       startFrom,
                       Some(maxItems),
                       recordNameFilter,

@@ -21,7 +21,7 @@ import vinyldns.core.domain.auth.AuthPrincipal
 import vinyldns.core.domain.membership.{Group, GroupRepository, User, UserRepository}
 import vinyldns.api.domain.zone._
 import vinyldns.api.repository.ApiDataAccessor
-import vinyldns.api.route.{ListGlobalRecordSetsResponse, ListRecordSetsByZoneResponse}
+import vinyldns.api.route.{ListGlobalRecordSetDataResponse, ListGlobalRecordSetsResponse, ListRecordSetsByZoneResponse}
 import vinyldns.core.domain.record._
 import vinyldns.core.domain.zone.{Zone, ZoneCommandResult, ZoneRepository}
 import vinyldns.core.queue.MessageQueue
@@ -52,6 +52,7 @@ object RecordSetService {
       dataAccessor.zoneRepository,
       dataAccessor.groupRepository,
       dataAccessor.recordSetRepository,
+      dataAccessor.recordSetDataRepository,
       dataAccessor.recordChangeRepository,
       dataAccessor.userRepository,
       messageQueue,
@@ -67,6 +68,7 @@ class RecordSetService(
     zoneRepository: ZoneRepository,
     groupRepository: GroupRepository,
     recordSetRepository: RecordSetRepository,
+    recordSetDataRepository: RecordSetDataRepository,
     recordChangeRepository: RecordChangeRepository,
     userRepository: UserRepository,
     messageQueue: MessageQueue,
@@ -230,6 +232,45 @@ class RecordSetService(
       recordSetResults.nameSort
     )
 
+  def listRecordSetData(
+                      startFrom: Option[String],
+                      maxItems: Option[Int],
+                      recordNameFilter: String,
+                      recordTypeFilter: Option[Set[RecordType]],
+                      recordOwnerGroupFilter: Option[String],
+                      nameSort: NameSort,
+                      authPrincipal: AuthPrincipal
+                    ): Result[ListGlobalRecordSetDataResponse] =
+    for {
+      _ <- validRecordNameFilterLength(recordNameFilter).toResult
+      formattedRecordNameFilter <- formatRecordNameFilter(recordNameFilter)
+      recordSetDataResults <- recordSetDataRepository
+        .listRecordSetData(
+          None,
+          startFrom,
+          maxItems,
+          Some(formattedRecordNameFilter),
+          recordTypeFilter,
+          recordOwnerGroupFilter,
+          nameSort
+        )
+        .toResult[ListRecordSetDataResults]
+      rsOwnerGroupIds = recordSetDataResults.recordSets.flatMap(_.ownerGroupId).toSet
+      rsZoneIds = recordSetDataResults.recordSets.map(_.zoneId).toSet
+      rsGroups <- groupRepository.getGroups(rsOwnerGroupIds).toResult[Set[Group]]
+      rsZones <- zoneRepository.getZones(rsZoneIds).toResult[Set[Zone]]
+      setsWithSupplementalInfo = getSupplementalrsDataInfo(recordSetDataResults.recordSets, rsGroups, rsZones)
+    } yield ListGlobalRecordSetDataResponse(
+      setsWithSupplementalInfo,
+      recordSetDataResults.startFrom,
+      recordSetDataResults.nextId,
+      recordSetDataResults.maxItems,
+      recordNameFilter,
+      recordSetDataResults.recordTypeFilter,
+      recordSetDataResults.recordOwnerGroupFilter,
+      recordSetDataResults.nameSort
+    )
+
   def listRecordSetsByZone(
       zoneId: String,
       startFrom: Option[String],
@@ -372,6 +413,20 @@ class RecordSetService(
         case None => ("Unknown zone name", false)
       }
       RecordSetGlobalInfo(rs, zoneName, zoneShared, ownerGroupName)
+    }
+  def getSupplementalrsDataInfo(
+                           recordsets: List[RecordSet],
+                           groups: Set[Group],
+                           zones: Set[Zone]
+                         ): List[RecordSetDataGlobalInfo] =
+    recordsets.map { rs =>
+      val ownerGroupName =
+        rs.ownerGroupId.flatMap(groupId => groups.find(_.id == groupId).map(_.name))
+      val (zoneName, zoneShared) = zones.find(_.id == rs.zoneId) match {
+        case Some(zone) => (zone.name, zone.shared)
+        case None => ("Unknown zone name", false)
+      }
+      RecordSetDataGlobalInfo(rs, zoneName, zoneShared, ownerGroupName)
     }
 
   def getGroupName(groupId: Option[String]): Result[Option[String]] = {

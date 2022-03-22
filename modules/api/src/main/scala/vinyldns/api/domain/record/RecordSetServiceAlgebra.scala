@@ -20,7 +20,7 @@ import vinyldns.api.Interfaces.Result
 import vinyldns.api.domain.zone.RecordSetInfo
 import vinyldns.core.domain.auth.AuthPrincipal
 import vinyldns.core.domain.zone.ZoneCommandResult
-import vinyldns.api.route.{ListGlobalRecordSetsResponse, ListRecordSetsByZoneResponse}
+import vinyldns.api.route.{ListGlobalRecordSetDataResponse, ListGlobalRecordSetsResponse, ListRecordSetsByZoneResponse}
 import vinyldns.core.domain.record.NameSort.NameSort
 import vinyldns.core.domain.record.RecordType.RecordType
 import vinyldns.core.domain.record.{RecordSet, RecordSetChange}
@@ -56,6 +56,16 @@ trait RecordSetServiceAlgebra {
       nameSort: NameSort,
       authPrincipal: AuthPrincipal
   ): Result[ListGlobalRecordSetsResponse]
+
+  def listRecordSetData(
+                      startFrom: Option[String],
+                      maxItems: Option[Int],
+                      recordNameFilter: String,
+                      recordTypeFilter: Option[Set[RecordType]],
+                      recordOwnerGroupId: Option[String],
+                      nameSort: NameSort,
+                      authPrincipal: AuthPrincipal
+                    ): Result[ListGlobalRecordSetDataResponse]
 
   def listRecordSetsByZone(
       zoneId: String,

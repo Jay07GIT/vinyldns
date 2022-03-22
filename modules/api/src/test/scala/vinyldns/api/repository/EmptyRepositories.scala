@@ -18,7 +18,7 @@ package vinyldns.api.repository
 
 import vinyldns.core.domain.auth.AuthPrincipal
 import vinyldns.core.domain.record.RecordType.RecordType
-import vinyldns.core.domain.record.{ChangeSet, ListRecordSetResults, NameSort, RecordSet, RecordSetRepository}
+import vinyldns.core.domain.record.{ChangeSet, ListRecordSetDataResults, ListRecordSetResults, NameSort, RecordSet, RecordSetDataRepository, RecordSetRepository}
 import vinyldns.core.domain.zone.{ListZonesResults, Zone, ZoneRepository}
 import cats.effect._
 import scalikejdbc._
@@ -46,6 +46,7 @@ trait EmptyRecordSetRepo extends RecordSetRepository {
   ): IO[ListRecordSetResults] =
     IO.pure(ListRecordSetResults(nameSort = nameSort))
 
+
   def getRecordSets(zoneId: String, name: String, typ: RecordType): IO[List[RecordSet]] =
     IO.pure(List())
 
@@ -59,6 +60,20 @@ trait EmptyRecordSetRepo extends RecordSetRepository {
   def getFirstOwnedRecordByGroup(ownerGroupId: String): IO[Option[String]] = IO.pure(None)
 
   def deleteRecordSetsInZone(DB: DB, zoneId: String, zoneName: String): IO[Unit] = IO(())
+}
+
+trait EmptyRecordSetDataRepo extends RecordSetDataRepository {
+
+  def listRecordSetData(
+                         zoneId: Option[String],
+                         startFrom: Option[String],
+                         maxItems: Option[Int],
+                         recordNameFilter: Option[String],
+                         recordTypeFilter: Option[Set[RecordType]],
+                         recordOwnerGroupFilter: Option[String],
+                         nameSort: NameSort
+                       ): IO[ListRecordSetDataResults] =
+    IO.pure(ListRecordSetDataResults(nameSort = nameSort))
 }
 
 trait EmptyZoneRepo extends ZoneRepository {

@@ -563,6 +563,55 @@ class RecordSetRoutingSpec
       }
     }.toResult
 
+    def listRecordSetData(
+                        startFrom: Option[String],
+                        maxItems: Option[Int],
+                        recordNameFilter: String,
+                        recordTypeFilter: Option[Set[RecordType]],
+                        recordOwnerGroupFilter: Option[String],
+                        nameSort: NameSort,
+                        authPrincipal: AuthPrincipal
+                      ): Result[ListGlobalRecordSetDataResponse] = {
+      if (recordTypeFilter.contains(Set(CNAME))) {
+        Right(
+          ListGlobalRecordSetDataResponse(
+            List(
+              RecordSetDataGlobalInfo(rs4, okZone.name, okZone.shared, None)
+            ),
+            startFrom,
+            None,
+            maxItems,
+            "rs*",
+            recordTypeFilter,
+            recordOwnerGroupFilter,
+            nameSort
+          )
+        )
+      } else {
+        val recordSetList = recordOwnerGroupFilter match {
+          case Some("my-group") => List(RecordSetDataGlobalInfo(rs2, okZone.name, okZone.shared, None))
+          case _ =>
+            List(
+              RecordSetDataGlobalInfo(rs1, okZone.name, okZone.shared, None),
+              RecordSetDataGlobalInfo(rs2, okZone.name, okZone.shared, None),
+              RecordSetDataGlobalInfo(rs3, okZone.name, okZone.shared, None)
+            )
+        }
+        Right(
+          ListGlobalRecordSetDataResponse(
+            recordSetList,
+            startFrom,
+            None,
+            maxItems,
+            "rs*",
+            recordTypeFilter,
+            None,
+            nameSort
+          )
+        )
+      }
+    }.toResult
+
     def listRecordSetsByZone(
         zoneId: String,
         startFrom: Option[String],
