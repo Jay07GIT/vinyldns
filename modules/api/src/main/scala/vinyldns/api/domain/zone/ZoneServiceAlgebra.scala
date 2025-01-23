@@ -27,6 +27,11 @@ trait ZoneServiceAlgebra {
       auth: AuthPrincipal
   ): Result[ZoneCommandResult]
 
+  def createzone(
+                     createZoneInput: CreateZoneInput,
+                     auth: AuthPrincipal
+                   ): Result[ZoneCommandResult]
+
   def updateZone(updateZoneInput: UpdateZoneInput, auth: AuthPrincipal): Result[ZoneCommandResult]
 
   def deleteZone(zoneId: String, auth: AuthPrincipal): Result[ZoneCommandResult]

@@ -143,6 +143,15 @@ class ZoneRoute(
         }
       }
     } ~
+    path("zones" / "generatezone") {
+      (post & monitor("Endpoint.generatezone")) {
+        authenticateAndExecuteWithEntity[ZoneCommandResult, CreateZoneInput](
+          (authPrincipal, createZoneInput) =>
+            zoneService.createzone(encrypt(createZoneInput), authPrincipal)
+        ) { chg =>
+          complete(StatusCodes.Accepted, chg)
+        }
+      }} ~
     path("zones" / "backendids") {
       (get & monitor("Endpoint.getBackendIds")) {
         authenticateAndExecute(_ => zoneService.getBackendIds()) { ids =>

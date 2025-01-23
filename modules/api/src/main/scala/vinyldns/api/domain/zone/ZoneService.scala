@@ -32,7 +32,14 @@ import com.cronutils.model.definition.CronDefinition
 import com.cronutils.model.definition.CronDefinitionBuilder
 import com.cronutils.parser.CronParser
 import com.cronutils.model.CronType
+import org.xbill.DNS.{DClass, Message, NSRecord, Name, Rcode, Record, SOARecord, SimpleResolver, TSIG, Type, Update}
+import scalaj.http.{Http, HttpOptions}
 import vinyldns.api.domain.membership.MembershipService
+
+import java.io.{File, IOException, PrintWriter}
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Paths, StandardOpenOption}
+import scala.util.Try
 
 object ZoneService {
   def apply(
@@ -134,6 +141,408 @@ class ZoneService(
       deleteZoneChange <- ZoneChangeGenerator.forDelete(zone, auth).toResult
       _ <- messageQueue.send(deleteZoneChange).toResult[Unit]
     } yield deleteZoneChange
+
+  def createzone(
+                  createZoneInput: CreateZoneInput,
+                  auth: AuthPrincipal
+                ): Result[ZoneCommandResult] =
+    for {
+
+//      _ <- createDirectoryWithPermissions(new File("/etc/bind/zones")).toResult
+//      _ <- createDirectoryWithPermissions(new File("/etc/bind")).toResult
+      //_ <- testTSIGConnection().toResult
+      //_ <- toCreateZoneMessage(createZoneInput.name).toResult
+      _ <- setupNewZoneInContainer("babe40bc2708", createZoneInput.name,"admin.test.com.").toResult
+      //_ <- createZoneUsingRestApi(createZoneInput.name,"admin.test.com.").toResult
+     // _ <- createZone(createZoneInput.name,"admin.test.com.").toResult
+      zoneToCreate = Zone(createZoneInput, auth.isTestUser)
+      createZoneChange <- ZoneChangeGenerator.forAdd(zoneToCreate, auth).toResult
+    } yield createZoneChange
+
+
+  private val defaultTTL = 3600
+  val resolverHost: String = "127.0.0.1"
+  val resolverPort: Int = 19001
+  val tsigKeyName: String = "vinyldns."
+  val tsigSecret: String = "nzisn+4G2ldMn0q1CV3vsg=="
+  val zoneFilePath = "/etc/bind/zones/example.com.db"
+
+
+
+  def createZoneUsingRestApi(zoneName: String, adminEmail: String): Either[String, String] = {
+    try {
+      val bindApiUrl = "http://127.0.0.1:19001/api/v1"
+      val zoneConfig = s"""{
+        "name": "${zoneName}",
+        "type": "master",
+        "file": "/var/named/${zoneName}.zone",
+        "allow-update": { "key": "${tsigKeyName}" }
+      }"""
+      println("weqreqerwqrewq")
+
+
+      // Create zone file content first
+      val zoneContent = s"""$$TTL 3600
+                           |@       IN      SOA     ns1.${zoneName}. ${adminEmail.replace('@', '.')}. (
+                           |                        ${System.currentTimeMillis() / 1000} ; serial
+                           |                        3600        ; refresh
+                           |                        600         ; retry
+                           |                        86400       ; expire
+                           |                        3600 )      ; minimum
+                           |
+                           |        IN      NS      ns1.${zoneName}.
+                           |        IN      NS      ns2.${zoneName}.
+                           |""".stripMargin
+
+      // Write zone file
+      val writer = new PrintWriter(new File(s"/var/bind/default/${zoneName}zone"))
+      println("writer",writer)
+      writer.write(zoneContent)
+      writer.close()
+      println("close")
+
+      // Make REST API call
+      val response = Http(s"$bindApiUrl/zones")
+        .postData(zoneConfig)
+        .header("content-type", "application/json")
+        .option(HttpOptions.followRedirects(true))
+        .asString
+
+      if (response.code == 201) {
+        Right(s"Zone ${zoneName} created successfully")
+      } else {
+        Left(s"Failed to create zone: ${response.body}")
+      }
+    } catch {
+      case e: Exception =>
+        println(e.getMessage)
+        Left(s"Failed to create zone: ${e.getMessage}")
+    }
+  }
+
+
+  def createZone(zoneName: String, adminEmail: String): Either[String, String] = {
+    println(s"Creating zone: $zoneName")
+
+    try {
+      val resolver = new SimpleResolver(resolverHost)
+      resolver.setPort(resolverPort)
+      resolver.setTCP(true)
+
+      val tsigKey = new TSIG(
+        TSIG.HMAC_MD5,
+        Name.fromString(tsigKeyName),
+        tsigSecret
+      )
+      resolver.setTSIGKey(tsigKey)
+
+      val fullZoneName = if (zoneName.endsWith(".")) zoneName else zoneName + "."
+
+      // First, create the zone itself
+      val parentZoneName = fullZoneName.split("\\.",-1).drop(1).mkString(".")
+      if (parentZoneName.isEmpty) {
+         Left("Cannot create zone at root level")
+      }
+
+      // Create update for parent zone
+      val createZoneUpdate = new Update(Name.fromString(parentZoneName + "."))
+
+      // Create NS record for delegation
+      val nsRecord = Record.newRecord(
+        Name.fromString(fullZoneName),
+        2,
+        1,
+        3600
+      )
+
+      createZoneUpdate.add(nsRecord)
+
+      var response = resolver.send(createZoneUpdate)
+      println(s"Response code: ${response.getRcode} (${Rcode.string(response.getRcode)})")
+      if (response.getRcode != Rcode.NOERROR) {
+         Left(s"Failed to create zone: ${Rcode.string(response.getRcode)} - ${response.toString}")
+      }
+
+      // Now add the zone contents
+      val update = new Update(Name.fromString(fullZoneName))
+
+      val primaryNs = "ns1.sample.com."
+      val secondaryNs = "ns2.sample.com."
+      val formattedEmail = adminEmail.replace('@', '.')
+
+      // Create SOA Record
+      val soa = new SOARecord(
+        Name.fromString(fullZoneName),
+        DClass.IN,
+        3600, // TTL
+        Name.fromString(primaryNs),
+        Name.fromString(formattedEmail),
+        System.currentTimeMillis() / 1000, // Serial number based on current time
+        10800, // Refresh: 3 hours
+        3600,  // Retry: 1 hour
+        604800, // Expire: 1 week
+        38400  // Minimum TTL: 10 hours
+      )
+      update.add(soa)
+
+      // Add NS records
+      val ns1 = new NSRecord(
+        Name.fromString(fullZoneName),
+        DClass.IN,
+        3600,
+        Name.fromString(primaryNs)
+      )
+      val ns2 = new NSRecord(
+        Name.fromString(fullZoneName),
+        DClass.IN,
+        3600,
+        Name.fromString(secondaryNs)
+      )
+      update.add(ns1)
+      update.add(ns2)
+
+      response = resolver.send(update)
+      if (response.getRcode == Rcode.NOERROR) {
+        Right(s"Zone $zoneName created successfully")
+      } else {
+        Left(s"Failed to populate zone: ${Rcode.string(response.getRcode)} - ${response.toString}")
+      }
+    } catch {
+      case e: Exception =>
+        println(s"Error creating zone: ${e.getMessage}")
+        println(s"Stack trace: ${e.getStackTrace.mkString("\n")}")
+        Left(s"Error creating zone: ${e.getMessage}")
+    }
+  }
+
+  def testTSIGConnection(): Either[Throwable, Boolean] = {
+    try {
+      // Create resolver with TSIG key
+      val resolver = new SimpleResolver(resolverHost)
+      resolver.setPort(resolverPort)
+      resolver.setTCP(true)
+
+      // Create TSIG key
+      val tsigKey = new TSIG(
+        TSIG.HMAC_SHA1,
+        Name.fromString(tsigKeyName),
+        tsigSecret
+      )
+      resolver.setTSIGKey(tsigKey)
+
+      // Create a test query
+      val name = Name.fromString("ok.")
+      val record = Record.newRecord(name, Type.SOA, DClass.IN)
+      val message = Message.newQuery(record)
+
+      // Send the query
+      val response = resolver.send(message)
+
+      // Print detailed response information
+      println("TSIG Test Response:")
+      println(s"Response Code: ${Rcode.string(response.getHeader.getRcode)}")
+      println(s"TSIG Error: ${response}")
+      println("Full Response:")
+      println(response)
+
+      // Check if TSIG verification passed
+      val tsigState = response.isVerified()
+      println(s"TSIG Verification: ${if (tsigState) "Passed" else "Failed"}")
+
+      // Check TSIG key details
+      println("\nTSIG Key Details:")
+      println(s"Key Name: ${tsigKey}")
+
+
+      Right(tsigState)
+    } catch {
+      case e: Exception =>
+        println(s"TSIG Test Error: ${e.getMessage}")
+        e.printStackTrace()
+        Left(e)
+    }
+  }
+
+  private def createResolver(): Either[Throwable, SimpleResolver] = {
+    Try {
+      val resolver = new SimpleResolver(resolverHost)
+      resolver.setPort(resolverPort)
+      resolver.setTCP(true)
+
+      try {
+        // Create TSIG key with proper error handling
+        val tsigKey = new TSIG(
+          TSIG.HMAC_SHA1,
+          Name.fromString(tsigKeyName),
+          tsigSecret
+        )
+        resolver.setTSIGKey(tsigKey)
+      } catch {
+        case e: Exception =>
+          throw new Exception(s"Failed to create TSIG key: ${e.getMessage}", e)
+      }
+
+      resolver
+    }.toEither
+  }
+
+
+  def createZoneFile(zoneName: String, adminEmail: String, ttl: Int): String = {
+    s"""
+       |TTL $ttl
+       |@   IN  SOA     ns1.$zoneName. $adminEmail. (
+       |                  1   ; Serial
+       |             604800   ; Refresh
+       |              86400   ; Retry
+       |            2419200   ; Expire
+       |             604800 ) ; Negative Cache TTL
+       |;
+       |@   IN  NS      ns1.$zoneName.
+       |ns1 IN  A       192.168.1.1
+       |""".stripMargin
+  }
+
+  // Function to update BIND9 configuration
+  def updateBindConfig(zoneName: String): Unit = {
+    val configContent = s"""
+                           |zone "$zoneName" {
+                           |    type master;
+                           |    file "$zoneFilePath";
+                           |};
+                           |""".stripMargin
+
+    try {
+      val configFilePath = Paths.get("/etc/bind/named.conf.local")
+
+      // Check if the file exists; create it if not
+      if (!Files.exists(configFilePath)) {
+        Files.createFile(configFilePath)
+      }
+
+      // Append the new zone configuration to the file
+      Files.write(
+        configFilePath,
+        configContent.getBytes(StandardCharsets.UTF_8),
+        StandardOpenOption.APPEND // Append content to the file
+      )
+
+      println(s"Zone configuration for $zoneName appended to named.conf.local")
+
+    } catch {
+      case e: IOException =>
+        println(s"An error occurred while updating the BIND configuration: ${e.getMessage}")
+    }
+  }
+
+
+
+  import scala.sys.process._
+
+  def executeDockerCommand(containerId: String, command: String): Either[String, String] = {
+    try {
+      println("Executing docker command...")
+
+      // Execute the command and capture output
+      val dockerCmd = s"docker exec -u root $containerId $command"
+      val result = dockerCmd.!!  // !! executes the command and returns output as string
+
+      println(s"Command executed: $dockerCmd")
+      println(s"Result: $result")
+
+      Right(result)
+    } catch {
+      case e: Exception =>
+        println(s"Error: ${e.getMessage}")
+        Left(s"Docker command failed: ${e.getMessage}")
+    }
+  }
+
+  def createZoneFileInContainer(containerId: String, zoneName: String, content: String): Either[String, String] = {
+    // Escape quotes and special characters
+    val escapedContent = content.replace("\"", "\\\"").replace("$", "\\$")
+    println(escapedContent)
+
+
+    // Use single quotes around the content
+    val command = s"touch /var/bind/zones/default/${zoneName}hosts && echo '${escapedContent}' > /var/bind/zones/default/${zoneName}hosts"
+
+    executeDockerCommand(containerId, command)
+  }
+
+  def updateBindConfigInContainer(containerId: String, zoneName: String): Either[String, String] = {
+    val configContent = s"""
+                           |zone "$zoneName" {
+                           |    type master;
+                           |    file "/var/bind/zones/default/${zoneName}hosts";
+                           |    allow-update { key "vinyldns"; };
+                           |    notify yes;
+                           |};""".stripMargin
+
+    // Use single quotes for shell command to avoid escaping issues
+    val command = s"echo '$configContent' >> /etc/bind/named.conf.newzones"
+
+    executeDockerCommand(containerId, command)
+  }
+
+  def setupNewZoneInContainer(containerId: String, zoneName: String, adminEmail: String, ttl: Int = 3600): Either[String, Unit] = {
+    for {
+      zoneContent <- Right(createZoneFile(zoneName, adminEmail, ttl))
+      _ <- createZoneFileInContainer(containerId, zoneName, zoneContent)
+      _ <- updateBindConfigInContainer(containerId, zoneName)
+      // Reload BIND after changes
+      _ <- executeDockerCommand(containerId, "rndc reload")
+    } yield ()
+  }
+
+  // Your existing toCreateZoneMessage method
+  def toCreateZoneMessage(newZoneName: String): Either[Throwable, Message] = {
+    createZoneFile(newZoneName, "admin.test.com.",38400)
+    updateBindConfig(newZoneName)
+    for {
+      resolver <- createResolver()
+      result <- Try {
+        val update = new Update(Name.fromString(newZoneName))
+
+        val soaRecord = new SOARecord(
+          Name.fromString(newZoneName),
+          DClass.IN,
+          defaultTTL,
+          Name.fromString(s"ns1.${newZoneName}"),
+          Name.fromString(s"admin.${newZoneName}"),
+          System.currentTimeMillis() / 1000L,
+          3600L,
+          1800L,
+          604800L,
+          86400L
+        )
+
+        // Add records
+        update.add(soaRecord)
+
+        // Send update and handle response
+        val response = resolver.send(update)
+        println(s"Zone creation response for ${newZoneName}:")
+        println(response)
+
+        if (response.getHeader.getRcode == Rcode.NOERROR) {
+          println(s"Zone ${newZoneName} created successfully")
+        } else {
+          val errorMsg = s"Failed to create zone ${newZoneName}. Response code: ${Rcode.string(response.getHeader.getRcode)}"
+          println(errorMsg)
+          if (response.getHeader.getRcode == Rcode.NOTAUTH) {
+            println("TSIG authentication failed. Please check your TSIG key configuration.")
+          }
+          throw new Exception(errorMsg)
+        }
+
+        response
+      }.toEither
+    } yield result
+  }
+
+
+
+
 
   def syncZone(zoneId: String, auth: AuthPrincipal): Result[ZoneCommandResult] =
     for {
