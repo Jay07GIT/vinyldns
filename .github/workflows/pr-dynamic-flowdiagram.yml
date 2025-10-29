@@ -1,0 +1,50 @@
+name: Auto Flowchart
+
+on:
+  pull_request:
+    types: [opened, edited]
+
+jobs:
+  generate-diagram:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get PR Body
+        id: pr
+        uses: actions-ecosystem/action-get-pull-request@v1
+
+      - name: Generate Flowchart
+        id: chart
+        uses: openai/openai-assistant-action@v1
+        with:
+          model: gpt-5
+          input: |
+            Create a **flowchart in Mermaid format** from this PR description:
+
+            "${{ steps.pr.outputs.body }}"
+
+            **Rules / Style**:
+            1. Always use `flowchart TD`
+            2. Use letters `A, B, C …` for nodes
+            3. Include decisions as `{ }` nodes whenever the PR mentions choices, conditions, or alternatives
+            4. Include loops if a step can repeat (e.g., re-try, error handling)
+            5. Keep node labels short and clear (like “User requests access”, “Grant access”, “Rejected”)
+            6. End the workflow with a final node representing the completion
+            7. The output should be **ready to paste inside a PR comment** as a Mermaid code block
+
+          api-key: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Post Comment
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          message: |
+            ### PR Description
+            ${{ steps.pr.outputs.body }}
+
+            ### Flow Diagram
+            ```mermaid
+            ${{ steps.chart.outputs.result }}
+            ```
