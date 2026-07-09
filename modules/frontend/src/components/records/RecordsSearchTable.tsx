@@ -644,7 +644,7 @@ export function RecordsSearchTable({
                         type="button"
                         className="vds-action-btn vds-action-btn--view"
                         title="View history"
-                        onClick={() => onViewHistory(rec)}
+                        onClick={() => onViewHistory({ ...rec, fqdn: String(fqdn) })}
                       >
                         <i className="bi bi-clock-history" />
                       </button>

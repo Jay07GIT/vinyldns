@@ -43,7 +43,7 @@ const mockApi = api as unknown as {
   delete: ReturnType<typeof vi.fn>;
 };
 
-const BASE = "/zones/batchrecordchanges";
+const BASE = "/dnschanges";
 
 function buildChange(overrides: Partial<DnsChange> = {}): DnsChange {
   return {

@@ -22,7 +22,7 @@ import type {
   CreateDnsChangeRequest,
 } from "../types/dnsChange";
 
-const BASE = "/zones/batchrecordchanges";
+const BASE = "/dnschanges";
 
 export const dnsChangeService = {
   getBatchChange(id: string) {

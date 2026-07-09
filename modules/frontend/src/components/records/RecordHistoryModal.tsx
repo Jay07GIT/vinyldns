@@ -18,7 +18,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { recordsService } from "../../services/recordsService";
 import { copyToClipboard } from "../../utils/dateUtils";
-import { Pagination } from "../common/Pagination";
+import { PaginatedSection } from "../common/Pagination";
+import { LoadingSpinner } from "../common/LoadingSpinner";
 
 interface RecordHistoryModalProps {
   record: any;
@@ -535,24 +536,7 @@ export function RecordHistoryModal({
                   </small>
                 </div>
               ) : isLoading ? (
-                <div
-                  className="d-flex flex-column align-items-center justify-content-center gap-3 py-5"
-                  style={{ minHeight: 220 }}
-                >
-                  <div
-                    className="spinner-border"
-                    style={{
-                      color: "#1e5fa8",
-                      width: 36,
-                      height: 36,
-                      borderWidth: "3px",
-                    }}
-                    role="status"
-                  />
-                  <span className="text-muted small">
-                    Loading change history…
-                  </span>
-                </div>
+                <LoadingSpinner />
               ) : changes.length === 0 ? (
                 <div className="vds-empty-state py-5">
                   <i
@@ -565,18 +549,14 @@ export function RecordHistoryModal({
                   </small>
                 </div>
               ) : (
-                <>
-                  {(hasPrev || hasMore) && (
-                    <div className="d-flex align-items-center justify-content-end px-3 pt-2">
-                      <Pagination
-                        onPrev={handlePrev}
-                        onNext={handleNext}
-                        prevEnabled={hasPrev}
-                        nextEnabled={hasMore}
-                        rangeLabel={`${pageIdx * 100 + 1}–${pageIdx * 100 + changes.length}`}
-                      />
-                    </div>
-                  )}
+                <PaginatedSection
+                  show={hasPrev || hasMore}
+                  onPrev={handlePrev}
+                  onNext={handleNext}
+                  prevEnabled={hasPrev}
+                  nextEnabled={hasMore}
+                  rangeLabel={`${pageIdx * 100 + 1}–${pageIdx * 100 + changes.length}`}
+                >
                   <div
                     className="vds-zones-table-wrap"
                     style={{
@@ -680,23 +660,7 @@ export function RecordHistoryModal({
                       </tbody>
                     </table>
                   </div>
-                  {(hasPrev || hasMore) && (
-                    <div
-                      className="d-flex align-items-center justify-content-end px-3 py-2"
-                      style={{
-                        borderTop: "1px solid var(--vds-card-border, #dde4ef)",
-                      }}
-                    >
-                      <Pagination
-                        onPrev={handlePrev}
-                        onNext={handleNext}
-                        prevEnabled={hasPrev}
-                        nextEnabled={hasMore}
-                        rangeLabel={`${pageIdx * 100 + 1}–${pageIdx * 100 + changes.length}`}
-                      />
-                    </div>
-                  )}
-                </>
+                </PaginatedSection>
               )}
             </div>
           </div>

@@ -19,7 +19,7 @@ import { useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { DnsChangesTable } from "../components/dnsChanges/DnsChangesTable";
 import { DnsChangeForm } from "../components/dnsChanges/DnsChangeForm";
-import { Pagination } from "../components/common/Pagination";
+import { PaginatedSection } from "../components/common/Pagination";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { useDnsChanges } from "../hooks/useDnsChanges";
 import { useProfile } from "../contexts/ProfileContext";
@@ -155,7 +155,7 @@ export function DnsChangesPage() {
     setCancelTarget(null);
   };
 
-  // Dedicated count query — calls GET /zones/batchrecordchanges/count which
+  // Dedicated count query — calls GET /dnschange/count which
   // uses SQL COUNT queries server-side. No page-size limit; returns exact
   // totals for all matching batch changes without fetching full records.
   const { data: countData, isLoading: isCountLoading } =
@@ -220,25 +220,7 @@ export function DnsChangesPage() {
   );
 
   return (
-    <div className="position-relative">
-      {isFetching && !isLoading && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 20,
-            background: "rgba(255,255,255,0.72)",
-            backdropFilter: "blur(2px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: "inherit",
-          }}
-          aria-label="Loading"
-        >
-          <LoadingSpinner />
-        </div>
-      )}
+    <div>
       <div className="rounded-3 mb-4 d-flex justify-content-between align-items-center vds-page-header">
         <div className="d-flex align-items-center gap-3">
           <div className="rounded-3 d-flex align-items-center justify-content-center vds-page-header__icon">
@@ -625,58 +607,31 @@ export function DnsChangesPage() {
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="card vds-toolbar-card">
-          <LoadingSpinner />
-        </div>
+      {isLoading || isFetching ? (
+        <LoadingSpinner message="Loading changes…" />
       ) : (
-        <div className="card vds-toolbar-card overflow-hidden">
-          {(prevPageEnabled || nextPageEnabled) && (
-            <div className="d-flex align-items-center justify-content-end px-3 pt-2">
-              <Pagination
-                onPrev={prevPage}
-                onNext={nextPage}
-                prevEnabled={prevPageEnabled && !isFetching}
-                nextEnabled={nextPageEnabled && !isFetching}
-                rangeLabel={
-                  dnsChanges.length > 0
-                    ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + dnsChanges.length}`
-                    : undefined
-                }
-                totalCount={cardTotal > 0 ? cardTotal : undefined}
-              />
-            </div>
-          )}
-          <div
-            className="position-relative"
-            style={{ maxHeight: "65vh", overflowY: "auto" }}
-          >
-            <DnsChangesTable
-              changes={dnsChanges}
-              onCancel={handleCancel}
-              ignoreAccess={ignoreAccess}
-              currentUserId={currentUserId}
-              fromTab={activeTab}
-              currentPaging={paging}
-            />
-          </div>
-          {(prevPageEnabled || nextPageEnabled) && (
-            <div className="card-footer d-flex align-items-center justify-content-end py-2 px-3">
-              <Pagination
-                onPrev={prevPage}
-                onNext={nextPage}
-                prevEnabled={prevPageEnabled && !isFetching}
-                nextEnabled={nextPageEnabled && !isFetching}
-                rangeLabel={
-                  dnsChanges.length > 0
-                    ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + dnsChanges.length}`
-                    : undefined
-                }
-                totalCount={cardTotal > 0 ? cardTotal : undefined}
-              />
-            </div>
-          )}
-        </div>
+        <PaginatedSection
+          show={prevPageEnabled || nextPageEnabled}
+          onPrev={prevPage}
+          onNext={nextPage}
+          prevEnabled={prevPageEnabled}
+          nextEnabled={nextPageEnabled}
+          rangeLabel={
+            dnsChanges.length > 0
+              ? `${(currentPage - 1) * pageSize + 1}–${(currentPage - 1) * pageSize + dnsChanges.length}`
+              : undefined
+          }
+          totalCount={cardTotal > 0 ? cardTotal : undefined}
+        >
+          <DnsChangesTable
+            changes={dnsChanges}
+            onCancel={handleCancel}
+            ignoreAccess={ignoreAccess}
+            currentUserId={currentUserId}
+            fromTab={activeTab}
+            currentPaging={paging}
+          />
+        </PaginatedSection>
       )}
       {cancelTarget && (
         <div
