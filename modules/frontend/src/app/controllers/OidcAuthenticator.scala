@@ -107,6 +107,13 @@ class OidcAuthenticator @Inject() (wsClient: WSClient, configuration: Configurat
   }
 
   def getCodeCall(requestURI: String = ""): Uri = {
+    val header = VinylDNS.operationKeyword("GET", "oidc/code-call")
+    val common = Seq(
+      "backend.method" -> "GET",
+      "backend.path" -> "oidc/code-call",
+      "frontend.path" -> requestURI
+    )
+    val startNs = VinylDNS.logStart(logger, header, common)
     val nonce = new Nonce()
     val loginId = UUID.randomUUID().toString
     val redirectUri = s"${oidcInfo.redirectUri}/callback/${loginId}:${java.util.Base64.getEncoder.encodeToString(requestURI.getBytes)}"
@@ -120,11 +127,17 @@ class OidcAuthenticator @Inject() (wsClient: WSClient, configuration: Configurat
     )
 
     logger.info(s"Generated LoginId $loginId")
-    Uri(s"${oidcInfo.authorizationEndpoint}").withQuery(query)
+    val result = Uri(s"${oidcInfo.authorizationEndpoint}").withQuery(query)
+    VinylDNS.logResult(logger, header, startNs, 200, common)
+    result
   }
 
   def getCodeFromAuthResponse(request: RequestHeader): Either[ErrorResponse, AuthorizationCode] =
-    Try(AuthenticationResponseParser.parse(new URI(request.uri))).toEither
+    {
+      val header = VinylDNS.operationKeyword("GET", "oidc/auth-response")
+      val common = Seq("backend.method" -> "GET", "backend.path" -> "oidc/auth-response", "frontend.path" -> request.path)
+      val startNs = VinylDNS.logStart(logger, header, common)
+      val result = Try(AuthenticationResponseParser.parse(new URI(request.uri))).toEither
       .leftMap { err =>
         val errorMessage = s"Unexpected parse error in getCodeFromAuthResponse: ${err.getMessage}"
         ErrorResponse(500, errorMessage)
@@ -141,6 +154,16 @@ class OidcAuthenticator @Inject() (wsClient: WSClient, configuration: Configurat
           val errorMessage = s"Sign in error: ${err.getErrorObject.getDescription}"
           Left(ErrorResponse(err.toHTTPResponse.getStatusCode, errorMessage))
       }
+      VinylDNS.logResult(
+        logger,
+        header,
+        startNs,
+        result.fold(_.code, _ => 200),
+        common,
+        successWhen = _ == 200
+      )
+      result
+    }
 
   def isNotExpired(claimsSet: JWTClaimsSet): Boolean = {
     val now = new Date()
@@ -250,13 +273,28 @@ class OidcAuthenticator @Inject() (wsClient: WSClient, configuration: Configurat
       implicit executionContext: ExecutionContext
   ): EitherT[IO, ErrorResponse, JWTClaimsSet] =
     EitherT {
+      val header = VinylDNS.operationKeyword("POST", "oidc/callback")
+      val common = Seq("backend.method" -> "POST", "backend.path" -> "oidc/callback", "login.id" -> loginId)
+      val startNs = VinylDNS.logStart(logger, header, common)
       val redirectUriString = s"${oidcInfo.redirectUri}/callback/${loginId}"
       val redirectUri = new URI(redirectUriString)
       val codeGrant = new AuthorizationCodeGrant(code, redirectUri)
       val request = new TokenRequest(tokenEndpoint, clientAuth, codeGrant)
 
       logger.info(s"Sending token_id request for loginId [$loginId]")
-      IO(request.toHTTPRequest.send()).map(handleCallbackResponse)
+      IO(request.toHTTPRequest.send())
+        .map(handleCallbackResponse)
+        .map { result =>
+          VinylDNS.logResult(
+            logger,
+            header,
+            startNs,
+            result.fold(_.code, _ => 200),
+            common,
+            successWhen = _ == 200
+          )
+          result
+        }
     }
 
   private def oidcTry[A](t: => A): Either[ErrorResponse, A] =

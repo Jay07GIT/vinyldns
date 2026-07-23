@@ -32,7 +32,7 @@ import play.api._
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json._
-import play.api.libs.ws.{BodyWritable, InMemoryBody, WSClient}
+import play.api.libs.ws.{BodyWritable, InMemoryBody, WSClient, WSResponse}
 import play.api.mvc._
 import vinyldns.core.crypto.CryptoAlgebra
 import vinyldns.core.domain.Encrypted
@@ -43,11 +43,10 @@ import vinyldns.core.logging.RequestTracing
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 object VinylDNS {
-
-  import play.api.mvc._
 
   val ID_TOKEN = "idToken"
 
@@ -95,6 +94,90 @@ object VinylDNS {
     val firstName: Option[String]
     val lastName: Option[String]
   }
+
+  private[controllers] def isLikelyIdentifier(token: String): Boolean = {
+    val numeric = token.forall(_.isDigit)
+    val uuidLike = token.matches("[0-9a-fA-F-]{16,}")
+    val mixedId = token.exists(_.isDigit) && token.contains("-")
+    numeric || uuidLike || mixedId
+  }
+
+  private[controllers] def operationKeyword(method: String, backendPath: String): String = {
+    val stableTokens = backendPath
+      .toLowerCase
+      .split("/")
+      .filter(_.nonEmpty)
+      .filterNot(isLikelyIdentifier)
+      .map(_.replaceAll("[^a-z0-9]+", "_"))
+      .filter(_.nonEmpty)
+
+    val base = if (stableTokens.isEmpty) "REQUEST" else stableTokens.mkString("_")
+    s"${method.toUpperCase}_${base.toUpperCase}"
+  }
+
+  private[controllers] def stripHtml(text: String): String =
+    if (text != null && text.contains("<"))
+      text.replaceAll("(?s)<[^>]*>", "").replaceAll("\\s{2,}", " ").trim
+    else text
+
+  def frontendLogLine(header: String, event: String, fields: Seq[(String, String)]): String = {
+    val details = fields.map {
+      case (k, v) => s"$k=[${stripHtml(Option(v).getOrElse(""))}]"
+    }.mkString(" | ")
+
+    s"frontend header=[$header] event=[$event] | $details"
+  }
+
+  def logStart(
+      logger: org.slf4j.Logger,
+      header: String,
+      fields: Seq[(String, String)]
+  ): Long = {
+    logger.info(frontendLogLine(header, "START", fields))
+    System.nanoTime()
+  }
+
+  def logResult(
+      logger: org.slf4j.Logger,
+      header: String,
+      startNs: Long,
+      status: Int,
+      fields: Seq[(String, String)],
+      extraFields: Seq[(String, String)] = Seq.empty,
+      successWhen: Int => Boolean = s => s >= 200 && s < 400
+  ): Unit = {
+    val durationMs = (System.nanoTime() - startNs) / 1000000
+    val event = if (successWhen(status)) "SUCCESS" else "ERROR"
+    logger.info(
+      frontendLogLine(
+        header,
+        event,
+        fields ++ extraFields ++ Seq("status" -> status.toString, "duration.ms" -> durationMs.toString)
+      )
+    )
+  }
+
+  def logFailure(
+      logger: org.slf4j.Logger,
+      header: String,
+      startNs: Long,
+      error: Throwable,
+      fields: Seq[(String, String)],
+      extraFields: Seq[(String, String)] = Seq.empty
+  ): Unit = {
+    val durationMs = (System.nanoTime() - startNs) / 1000000
+    logger.error(
+      frontendLogLine(
+        header,
+        "ERROR",
+        fields ++ extraFields ++ Seq(
+          "error.message" -> Option(error.getMessage).getOrElse(error.getClass.getSimpleName),
+          "duration.ms" -> durationMs.toString
+        )
+      ),
+      error
+    )
+  }
 }
 
 @Singleton
@@ -111,7 +194,6 @@ class VinylDNS @Inject() (
   with CacheHeader {
 
   import VinylDNS._
-  import play.api.mvc._
 
   private val logger = LoggerFactory.getLogger(classOf[VinylDNS])
   private val signer = SignerFactory.getSigner("VinylDNS", "us/east")
@@ -211,6 +293,7 @@ class VinylDNS @Inject() (
     val vinyldnsRequest =
       new VinylDNSRequest("POST", s"$vinyldnsServiceBackend", "groups", payload)
     executeRequest(vinyldnsRequest, request.user).map(response => {
+      logger.info(s"group create completed with status [${response.status}]")
       logger.info(response.body)
       Status(response.status)(response.body)
         .withHeaders(cacheHeaders: _*)
@@ -220,7 +303,6 @@ class VinylDNS @Inject() (
   def getGroup(id: String): Action[AnyContent] = userAction.async { implicit request =>
     val vinyldnsRequest = VinylDNSRequest("GET", s"$vinyldnsServiceBackend", s"groups/$id")
     executeRequest(vinyldnsRequest, request.user).map(response => {
-      logger.info(s"group [$id] retrieved with status [${response.status}]")
       Status(response.status)(response.body)
         .withHeaders(cacheHeaders: _*)
     })
@@ -229,7 +311,6 @@ class VinylDNS @Inject() (
   def getGroupChange(gcid: String): Action[AnyContent] = userAction.async { implicit request =>
     val vinyldnsRequest = VinylDNSRequest("GET", s"$vinyldnsServiceBackend", s"groups/change/$gcid")
     executeRequest(vinyldnsRequest, request.user).map(response => {
-      logger.info(s"group change [$gcid] retrieved with status [${response.status}]")
       Status(response.status)(response.body)
         .withHeaders(cacheHeaders: _*)
     })
@@ -255,7 +336,6 @@ class VinylDNS @Inject() (
   def getUser(id: String): Action[AnyContent] = userAction.async { implicit request =>
     val vinyldnsRequest = VinylDNSRequest("GET", s"$vinyldnsServiceBackend", s"users/$id")
     executeRequest(vinyldnsRequest, request.user).map(response => {
-      logger.info(s"user [$id] retrieved with status [${response.status}]")
       Status(response.status)(response.body)
         .withHeaders(cacheHeaders: _*)
     })
@@ -751,13 +831,91 @@ class VinylDNS @Inject() (
         acc ++ values.asScala.map(v => key -> v)
     }
 
+  private def logPortalOperationStart(
+                                       signableRequest: SignableVinylDNSRequest,
+                                       user: User,
+                                       traceId: String
+                                     )(
+                                       implicit userRequest: UserRequest[_]
+                                     ): Long = {
+    val backendMethod = signableRequest.getHttpMethod.name()
+    val backendPath = signableRequest.getResourcePath
+    val header = VinylDNS.operationKeyword(backendMethod, backendPath)
+    VinylDNS.logStart(
+      logger,
+      header,
+      Seq(
+      "frontend.method" -> userRequest.method,
+      "frontend.path" -> userRequest.path,
+      "backend.method" -> backendMethod,
+      "backend.path" -> backendPath,
+      "user" -> user.userName,
+      "trace.id" -> traceId
+      )
+    )
+  }
+
+  private def logPortalOperationResult(
+                                        signableRequest: SignableVinylDNSRequest,
+                                        response: WSResponse,
+                                        traceId: String,
+                                        startNs: Long
+                                      )(
+                                        implicit userRequest: UserRequest[_]
+                                      ): Unit = {
+    val backendMethod = signableRequest.getHttpMethod.name()
+    val backendPath = signableRequest.getResourcePath
+    val header = VinylDNS.operationKeyword(backendMethod, backendPath)
+    VinylDNS.logResult(
+      logger,
+      header,
+      startNs = startNs,
+      status = response.status,
+      fields = Seq(
+      "frontend.method" -> userRequest.method,
+      "frontend.path" -> userRequest.path,
+      "backend.method" -> backendMethod,
+      "backend.path" -> backendPath,
+      "trace.id" -> traceId
+      )
+    )
+  }
+
+  private def logPortalOperationFailure(
+                                         signableRequest: SignableVinylDNSRequest,
+                                         error: Throwable,
+                                         traceId: String,
+                                         startNs: Long
+                                       )(
+                                         implicit userRequest: UserRequest[_]
+                                       ): Unit = {
+    val backendMethod = signableRequest.getHttpMethod.name()
+    val backendPath = signableRequest.getResourcePath
+    val header = VinylDNS.operationKeyword(backendMethod, backendPath)
+    VinylDNS.logFailure(
+      logger,
+      header,
+      startNs = startNs,
+      error = error,
+      fields = Seq(
+      "frontend.method" -> userRequest.method,
+      "frontend.path" -> userRequest.path,
+      "backend.method" -> backendMethod,
+      "backend.path" -> backendPath,
+      "trace.id" -> traceId
+      )
+    )
+  }
+
   private def executeRequest(request: VinylDNSRequest, user: User)(
     implicit userRequest: UserRequest[_]
   ) = {
     val signableRequest = new SignableVinylDNSRequest(request)
     val credentials = new BasicAWSCredentials(user.accessKey, crypto.decrypt(user.secretKey.value))
+    val traceHeader = RequestTracing.extractTraceHeader(userRequest.headers.toSimpleMap)
+    val traceId = traceHeader._2
     signer.sign(signableRequest, credentials)
-    logger.info(s"Request to send: [${signableRequest.getResourcePath}]")
+    val startNs = logPortalOperationStart(signableRequest, user, traceId)
 
     // We stringify JSON before it gets here, so we need to specify the content type through this
     // ugly implicit. If the body came as a JsonValue, we'd get this for free. Also, WSClient does
@@ -776,11 +934,20 @@ class VinylDNS @Inject() (
       )
       .withHttpHeaders(
         signableRequest.getHeaders.asScala.toSeq ++
-          Seq(RequestTracing.extractTraceHeader(userRequest.headers.toSimpleMap)): _*
+          Seq(traceHeader): _*
       )
       .withMethod(signableRequest.getHttpMethod.name())
       .withQueryStringParameters(extractParameters(signableRequest.getParameters): _*)
       .execute()
+      .map { response =>
+        logPortalOperationResult(signableRequest, response, traceId, startNs)
+        response
+      }
+      .recoverWith {
+        case NonFatal(error) =>
+          logPortalOperationFailure(signableRequest, error, traceId, startNs)
+          Future.failed(error)
+      }
   }
 
   def getMemberList(groupId: String): Action[AnyContent] = userAction.async { implicit request =>

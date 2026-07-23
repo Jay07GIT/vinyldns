@@ -17,6 +17,7 @@
 package controllers
 
 import javax.inject.{Inject, Singleton}
+import org.slf4j.LoggerFactory
 import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents}
 import vinyldns.core.health.HealthService
 
@@ -25,13 +26,29 @@ class HealthController @Inject() (components: ControllerComponents, healthServic
     extends AbstractController(components)
     with CacheHeader {
 
+  private val logger = LoggerFactory.getLogger(classOf[HealthController])
+
   def health(): Action[AnyContent] = Action { implicit request =>
+    val header = VinylDNS.operationKeyword(request.method, "health")
+    val common = Seq(
+      "frontend.method" -> request.method,
+      "frontend.path" -> request.path,
+      "backend.method" -> request.method,
+      "backend.path" -> "health"
+    )
+    val startNs = VinylDNS.logStart(logger, header, common)
+
     healthService
       .checkHealth()
       .map {
-        case Nil => Ok("OK").withHeaders(cacheHeaders: _*)
+        case Nil =>
+          val result = Ok("OK").withHeaders(cacheHeaders: _*)
+          VinylDNS.logResult(logger, header, startNs, result.header.status, common)
+          result
         case _ =>
-          InternalServerError("There was an internal server error.").withHeaders(cacheHeaders: _*)
+          val result = InternalServerError("There was an internal server error.").withHeaders(cacheHeaders: _*)
+          VinylDNS.logResult(logger, header, startNs, result.header.status, common)
+          result
       }
       .unsafeRunSync()
   }

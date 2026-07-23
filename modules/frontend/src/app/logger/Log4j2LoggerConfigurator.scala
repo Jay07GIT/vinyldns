@@ -34,9 +34,45 @@ import scala.util.Try
   */
 class Log4j2LoggerConfigurator extends LoggerConfigurator {
 
-  def init(rootPath: File, mode: Mode): Unit = ()
+  @volatile private var initialized = false
 
-  def configure(env: Environment): Unit = ()
+  private def fileFromSystemOrEnv: Option[File] =
+    Option(System.getProperty("log4j.configurationFile"))
+      .orElse(Option(System.getenv("LOG4J_CONFIGURATION_FILE")))
+      .map(_.trim)
+      .filter(_.nonEmpty)
+      .map(new File(_))
+
+  private def initFromFile(file: File): Unit =
+    if (!initialized && file.exists()) {
+      Try(org.apache.logging.log4j.core.config.Configurator.initialize(null, file.toURI.toString)).foreach { _ =>
+        initialized = true
+      }
+    }
+
+  def init(rootPath: File, mode: Mode): Unit = {
+    fileFromSystemOrEnv.foreach(initFromFile)
+
+    // Prefer deterministic root-based paths; avoid cwd-dependent resolution in prod.
+    val candidatePaths = Seq(
+      new File(rootPath, "conf/log4j2.xml"),                          // Workspace root
+      new File(rootPath, "modules/frontend/conf/log4j2.xml"),         // From workspace root
+      new File(rootPath.getParentFile, "frontend/conf/log4j2.xml")    // Module root
+    )
+    candidatePaths.foreach(initFromFile)
+  }
+
+  def configure(env: Environment): Unit = {
+    fileFromSystemOrEnv.foreach(initFromFile)
+
+    // Prefer deterministic environment-root-based paths.
+    val candidatePaths = Seq(
+      new File(env.rootPath, "conf/log4j2.xml"),
+      new File(env.rootPath, "modules/frontend/conf/log4j2.xml"),
+      new File(env.rootPath.getParentFile, "frontend/conf/log4j2.xml")
+    )
+    candidatePaths.foreach(initFromFile)
+  }
 
   /** Applies logger.* overrides from application.conf to the running log4j2 context. */
   def configure(
@@ -48,9 +84,12 @@ class Log4j2LoggerConfigurator extends LoggerConfigurator {
     import org.apache.logging.log4j.core.config.Configurator
     import scala.collection.JavaConverters._
 
+    // Ensure log4j2.xml is loaded when Play invokes this overload directly.
+    configure(env)
+
     // Read every key under `logger` in application.conf and apply to log4j2.
-    // e.g. logger.root = INFO  →  sets root logger to INFO
-    //      logger.play = WARN  →  sets "play" logger to WARN
+    // e.g. logger.root = INFO  ->  sets root logger to INFO
+    //      logger.play = WARN  ->  sets "play" logger to WARN
     Try(configuration.underlying.getConfig("logger")).toOption.foreach { loggerConf =>
       loggerConf.entrySet().asScala.foreach { entry =>
         val name      = entry.getKey

@@ -36,9 +36,29 @@ class LdapUserSyncProvider(authenticator: Authenticator) extends UserSyncProvide
 
   def getStaleUsers(users: List[User]): IO[List[User]] =
     for {
+      startNs <- IO(
+        VinylDNS.logStart(
+          logger,
+          VinylDNS.operationKeyword("GET", "user-sync/ldap/stale-users"),
+          Seq("backend.method" -> "GET", "backend.path" -> "user-sync/ldap/stale-users", "count" -> users.size.toString)
+        )
+      )
       _ <- IO(logger.info(s"Checking ${users.size} users against LDAP"))
       staleUsers <- authenticator.getUsersNotInLdap(users)
       _ <- IO(logger.info(s"LDAP sync complete; ${staleUsers.size} users not found in directory"))
+      _ <- IO {
+        VinylDNS.logResult(
+          logger,
+          VinylDNS.operationKeyword("GET", "user-sync/ldap/stale-users"),
+          startNs,
+          200,
+          Seq(
+            "backend.method" -> "GET",
+            "backend.path" -> "user-sync/ldap/stale-users"
+          ),
+          extraFields = Seq("stale.count" -> staleUsers.size.toString)
+        )
+      }
     } yield staleUsers
 }
 
@@ -141,6 +161,13 @@ class GraphApiUserSyncProvider(
 
   def getStaleUsers(users: List[User]): IO[List[User]] =
     for {
+      startNs <- IO(
+        VinylDNS.logStart(
+          logger,
+          VinylDNS.operationKeyword("GET", "user-sync/graph-api/stale-users"),
+          Seq("backend.method" -> "GET", "backend.path" -> "user-sync/graph-api/stale-users", "count" -> users.size.toString)
+        )
+      )
       _ <- IO(logger.info(s"Checking ${users.size} users against Graph API"))
       token <- getAccessToken()
       results <- users.grouped(maxConcurrency).toList.foldLeft(IO.pure(List.empty[Option[User]])) {
@@ -152,6 +179,19 @@ class GraphApiUserSyncProvider(
       }
       staleUsers = results.flatten
       _ <- IO(logger.info(s"Graph API sync complete; ${staleUsers.size} of ${users.size} users marked as stale"))
+      _ <- IO {
+        VinylDNS.logResult(
+          logger,
+          VinylDNS.operationKeyword("GET", "user-sync/graph-api/stale-users"),
+          startNs,
+          200,
+          Seq(
+            "backend.method" -> "GET",
+            "backend.path" -> "user-sync/graph-api/stale-users"
+          ),
+          extraFields = Seq("stale.count" -> staleUsers.size.toString)
+        )
+      }
     } yield staleUsers
 
   private[controllers] def parseUserResponse(responseBody: String, user: User): Option[User] = {

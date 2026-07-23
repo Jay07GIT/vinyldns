@@ -21,6 +21,7 @@ import java.net.URI
 import cats.effect.{Blocker, ContextShift, IO}
 import cats.implicits._
 import com.typesafe.config.{Config, ConfigFactory}
+import org.slf4j.LoggerFactory
 import play.api.{ConfigLoader, Configuration}
 import pureconfig._
 import pureconfig.generic.auto._
@@ -32,6 +33,8 @@ import scala.concurrent.duration._
 
 // $COVERAGE-OFF$
 class Settings(private val config: Configuration) {
+
+  private val logger = LoggerFactory.getLogger(classOf[Settings])
 
   private implicit val cs: ContextShift[IO] =
     IO.contextShift(scala.concurrent.ExecutionContext.global)
@@ -109,22 +112,38 @@ class Settings(private val config: Configuration) {
   val cryptoConfig = IO(config.get[Config]("crypto"))
 
   def validateLdapConfig(): Unit = {
+    val header = VinylDNS.operationKeyword("GET", "settings/ldap/validate")
+    val common = Seq("backend.method" -> "GET", "backend.path" -> "settings/ldap/validate")
+    val startNs = VinylDNS.logStart(logger, header, common)
     ldapUser; ldapPwd; ldapDomain; ldapSearchBase
     ldapCtxFactory; ldapSecurityAuthentication; ldapProviderUrl
     ldapUserNameAttribute
+    VinylDNS.logResult(logger, header, startNs, 200, common)
   }
 
-  def validateOidcConfig(): Unit =
+  def validateOidcConfig(): Unit = {
+    val header = VinylDNS.operationKeyword("GET", "settings/oidc/validate")
+    val common = Seq("backend.method" -> "GET", "backend.path" -> "settings/oidc/validate")
+    val startNs = VinylDNS.logStart(logger, header, common)
     try {
       oidcTenantId; oidcClientId; oidcSecret
+      VinylDNS.logResult(logger, header, startNs, 200, common)
     } catch {
       case e: com.typesafe.config.ConfigException.Missing =>
+        VinylDNS.logFailure(
+          logger,
+          header,
+          startNs = startNs,
+          error = e,
+          fields = common
+        )
         throw new IllegalArgumentException(
           "OIDC configuration incomplete for graph-api user sync. " +
             "The oidc.tenant-id, oidc.client-id, and oidc.secret settings are all required " +
             s"when user-sync.provider is set to 'graph-api': ${e.getMessage}"
         )
     }
+  }
 
   implicit def ldapSearchDomainLoader: ConfigLoader[List[LdapSearchDomain]] =
     new ConfigLoader[List[LdapSearchDomain]] {

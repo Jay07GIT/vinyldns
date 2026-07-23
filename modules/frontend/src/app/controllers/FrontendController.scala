@@ -22,10 +22,12 @@ import org.slf4j.LoggerFactory
 import play.api.{Configuration, Environment}
 import play.api.mvc._
 import play.filters.csrf.CSRF
+import vinyldns.core.logging.RequestTracing
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.io.Source
+import scala.util.control.NonFatal
 
 /*
  * Controller for page routes — serves the React SPA for all authenticated routes.
@@ -42,6 +44,32 @@ class FrontendController @Inject() (
 
   private val logger = LoggerFactory.getLogger(classOf[FrontendController])
   private val userAction = securitySupport.frontendAction
+
+  private def withFrontendLog(name: String)(
+      f: Request[AnyContent] => Future[Result]
+  ): Action[AnyContent] = userAction.async { implicit request =>
+    val traceId = RequestTracing.extractTraceHeader(request.headers.toSimpleMap)._2
+    val header = VinylDNS.operationKeyword(request.method, name)
+    val common = Seq(
+      "frontend.method" -> request.method,
+      "frontend.path" -> request.path,
+      "backend.method" -> request.method,
+      "backend.path" -> name,
+      "trace.id" -> traceId
+    )
+
+    val startNs = VinylDNS.logStart(logger, header, common)
+    f(request)
+      .map { result =>
+        VinylDNS.logResult(logger, header, startNs, result.header.status, common)
+        result
+      }
+      .recoverWith {
+        case NonFatal(e) =>
+          VinylDNS.logFailure(logger, header, startNs, e, common)
+          Future.failed(e)
+      }
+  }
 
   /**
    * Reads public/index.html and injects the Play CSRF token into <head>.
@@ -74,14 +102,14 @@ class FrontendController @Inject() (
   def noAccess(): Action[AnyContent]   = securitySupport.noAccess()
   def logout(): Action[AnyContent]     = securitySupport.logout()
 
-  def index(): Action[AnyContent]                          = userAction.async { implicit request => serveReactApp }
-  def catchAll(path: String): Action[AnyContent]            = userAction.async { implicit request => serveReactApp }
-  def viewAllGroups(): Action[AnyContent]                 = userAction.async { implicit request => serveReactApp }
-  def viewGroup(groupId: String): Action[AnyContent]      = userAction.async { implicit request => serveReactApp }
-  def viewAllZones(): Action[AnyContent]                  = userAction.async { implicit request => serveReactApp }
-  def viewZone(zoneId: String): Action[AnyContent]        = userAction.async { implicit request => serveReactApp }
-  def viewRecordSets(): Action[AnyContent]                = userAction.async { implicit request => serveReactApp }
-  def viewAllBatchChanges(): Action[AnyContent]           = userAction.async { implicit request => serveReactApp }
-  def viewBatchChange(batchId: String): Action[AnyContent] = userAction.async { implicit request => serveReactApp }
-  def viewNewBatchChange(): Action[AnyContent]            = userAction.async { implicit request => serveReactApp }
+  def index(): Action[AnyContent]                           = withFrontendLog("frontend/index")(req => serveReactApp(req))
+  def catchAll(path: String): Action[AnyContent]           = withFrontendLog(s"frontend/$path")(req => serveReactApp(req))
+  def viewAllGroups(): Action[AnyContent]                  = withFrontendLog("frontend/groups")(req => serveReactApp(req))
+  def viewGroup(groupId: String): Action[AnyContent]       = withFrontendLog(s"frontend/groups/$groupId")(req => serveReactApp(req))
+  def viewAllZones(): Action[AnyContent]                   = withFrontendLog("frontend/zones")(req => serveReactApp(req))
+  def viewZone(zoneId: String): Action[AnyContent]         = withFrontendLog(s"frontend/zones/$zoneId")(req => serveReactApp(req))
+  def viewRecordSets(): Action[AnyContent]                 = withFrontendLog("frontend/recordsets")(req => serveReactApp(req))
+  def viewAllBatchChanges(): Action[AnyContent]            = withFrontendLog("frontend/dnschanges")(req => serveReactApp(req))
+  def viewBatchChange(batchId: String): Action[AnyContent] = withFrontendLog(s"frontend/dnschanges/$batchId")(req => serveReactApp(req))
+  def viewNewBatchChange(): Action[AnyContent]             = withFrontendLog("frontend/dnschanges/new")(req => serveReactApp(req))
 }

@@ -35,6 +35,7 @@ package modules
 import actions._
 import cats.effect.{ContextShift, IO, Timer}
 import com.google.inject.AbstractModule
+import controllers.VinylDNS
 import controllers._
 import controllers.repository.{PortalDataAccessor, PortalDataAccessorProvider}
 import org.slf4j.LoggerFactory
@@ -51,12 +52,15 @@ class VinylDNSModule(environment: Environment, configuration: Configuration)
     extends AbstractModule {
 
   private val logger = LoggerFactory.getLogger(classOf[VinylDNSModule])
+  private val startupHeader = "MODULE_STARTUP"
+  private val moduleName = "VinylDNSModule"
   val settings = new Settings(configuration)
   implicit val t: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.global)
   implicit val cs: ContextShift[IO] =
     IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 
   override def configure(): Unit = {
+    VinylDNS.logStart(logger, startupHeader, Seq("module" -> moduleName))
     val startApp = for {
       cryptoConf <- settings.cryptoConfig
       crypto <- CryptoAlgebra.load(cryptoConf)
@@ -92,13 +96,39 @@ class VinylDNSModule(environment: Environment, configuration: Configuration)
       bind(classOf[UserChangeRepository]).toInstance(repositories.userChangeRepository)
       bind(classOf[TaskRepository]).toInstance(repositories.taskRepository)
       bind(classOf[HealthService]).toInstance(healthService)
+      logger.info(
+        VinylDNS.frontendLogLine(
+          startupHeader,
+          "SUCCESS",
+          Seq(
+            "module" -> moduleName,
+            "authenticator" -> auth.getClass.getSimpleName,
+            "syncProvider" -> syncProvider.getClass.getSimpleName
+          )
+        )
+      )
     }
 
-    startApp.unsafeRunSync()
+    startApp.handleErrorWith { e =>
+      IO(
+        logger.error(
+          VinylDNS.frontendLogLine(
+            startupHeader,
+            "ERROR",
+            Seq(
+              "module" -> moduleName,
+              "error.message" -> Option(e.getMessage).getOrElse(e.getClass.getSimpleName)
+            )
+          ),
+          e
+        )
+      )
+        .flatMap(_ => IO.raiseError(e))
+    }.unsafeRunSync()
   }
 
-  private def buildSyncProvider(auth: Authenticator): UserSyncProvider =
-    settings.userSyncProvider match {
+  private def buildSyncProvider(auth: Authenticator): UserSyncProvider = {
+    val provider = settings.userSyncProvider match {
       case "graph-api" =>
         settings.validateOidcConfig()
         new GraphApiUserSyncProvider(
@@ -120,6 +150,18 @@ class VinylDNSModule(environment: Environment, configuration: Configuration)
           s"""Unrecognized user-sync.provider="$unknown". Valid values are "ldap", "graph-api", or "none"."""
         )
     }
+    logger.info(
+      VinylDNS.frontendLogLine(
+        "BUILD_SYNC_PROVIDER",
+        "SUCCESS",
+        Seq(
+          "module" -> moduleName,
+          "syncProvider" -> provider.getClass.getSimpleName
+        )
+      )
+    )
+    provider
+  }
 
   private def resolvePollingInterval() =
     settings.userSyncProvider match {
@@ -134,11 +176,24 @@ class VinylDNSModule(environment: Environment, configuration: Configuration)
       (settings.userSyncProvider == "none" && settings.ldapSyncEnabled) ||
       !settings.oidcEnabled
 
-    if (needsLdap) {
+    val auth = if (needsLdap) {
       settings.validateLdapConfig()
       LdapAuthenticator(settings)
     } else
       new NoOpAuthenticator
+    logger.info(
+      VinylDNS.frontendLogLine(
+        "BUILD_AUTHENTICATOR",
+        "SUCCESS",
+        Seq(
+          "module" -> moduleName,
+          "authenticator" -> auth.getClass.getSimpleName,
+          "oidcEnabled" -> settings.oidcEnabled.toString,
+          "ldapSyncEnabled" -> settings.ldapSyncEnabled.toString
+        )
+      )
+    )
+    auth
   }
 }
 // $COVERAGE-ON$

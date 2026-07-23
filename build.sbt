@@ -267,6 +267,7 @@ lazy val frontendSettings = Seq(
   unmanagedResourceDirectories in Test += baseDirectory.value / "src" / "test" / "resources",
   javaOptions in Test += "-Dconfig.file=conf/application-test.conf",
   javaOptions in Test += "-Dlog4j.configurationFile=conf/log4j2.xml",
+  javaOptions in run += "-Dlog4j.configurationFile=" + (baseDirectory.value / "conf" / "log4j2.xml").getAbsolutePath,
   PlayKeys.devSettings += "vinyldns.base-version" -> (version in ThisBuild).value,
   // Build React frontend (npm run build → public/) before Play starts
   PlayKeys.playRunHooks += PrepareFrontendHook(baseDirectory.value),
@@ -282,16 +283,6 @@ lazy val frontendSettings = Seq(
   preparePortal := {
     import scala.sys.process._
     "./modules/frontend/deploy-to-frontend.sh" !
-  },
-  mappings in Universal ++= {
-    val publicDir = baseDirectory.value / "public"
-    if (publicDir.exists)
-      (publicDir ** "*").get
-        .filter(_.isFile)
-        .flatMap { file =>
-          IO.relativize(publicDir, file).map(rel => file -> s"public/$rel")
-        }
-    else Seq.empty
   },
   target in Universal := file("artifacts/"),
   packageName in Universal := "vinyldns-frontend"

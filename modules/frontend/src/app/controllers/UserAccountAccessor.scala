@@ -20,6 +20,7 @@ import cats.effect.{ContextShift, IO}
 import cats.implicits._
 import javax.inject.{Inject, Singleton}
 import java.time.Instant
+import org.slf4j.LoggerFactory
 import vinyldns.core.domain.membership._
 import java.time.temporal.ChronoUnit
 
@@ -27,6 +28,7 @@ import java.time.temporal.ChronoUnit
 class UserAccountAccessor @Inject() (users: UserRepository, changes: UserChangeRepository) {
 
   implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.global)
+  private val logger = LoggerFactory.getLogger(classOf[UserAccountAccessor])
 
   /**
     * Lookup a user in the store. Using identifier as the user id and/or name
@@ -36,32 +38,97 @@ class UserAccountAccessor @Inject() (users: UserRepository, changes: UserChangeR
     *         was an error.
     */
   def get(identifier: String): IO[Option[User]] =
-    users
+    {
+      val header = VinylDNS.operationKeyword("GET", "users/get")
+      val common = Seq("backend.method" -> "GET", "backend.path" -> "users/get", "identifier" -> identifier)
+      val startNs = VinylDNS.logStart(logger, header, common)
+      users
       .getUser(identifier)
       .flatMap {
         case None => users.getUserByName(identifier)
         case found => IO(found)
       }
+        .flatTap { result =>
+          VinylDNS.logResult(
+            logger,
+            header,
+            startNs,
+            if (result.isDefined) 200 else 404,
+            common,
+            successWhen = _ == 200
+          )
+          IO.unit
+        }
+    }
 
   def create(user: User): IO[User] =
-    for {
+    {
+      val header = VinylDNS.operationKeyword("POST", "users/create")
+      val common = Seq("backend.method" -> "POST", "backend.path" -> "users/create", "user" -> user.userName)
+      val startNs = VinylDNS.logStart(logger, header, common)
+      (for {
       _ <- users.save(user)
       _ <- changes.save(UserChange.CreateUser(user, "system", Instant.now.truncatedTo(ChronoUnit.MILLIS)))
-    } yield user
+      } yield user).flatTap { _ =>
+        VinylDNS.logResult(logger, header, startNs, 201, common)
+        IO.unit
+      }
+    }
 
   def update(user: User, oldUser: User): IO[User] =
-    for {
+    {
+      val header = VinylDNS.operationKeyword("PUT", "users/update")
+      val common = Seq("backend.method" -> "PUT", "backend.path" -> "users/update", "user" -> user.userName)
+      val startNs = VinylDNS.logStart(logger, header, common)
+      (for {
       _ <- users.save(user)
       _ <- changes.save(UserChange.UpdateUser(user, "system", Instant.now.truncatedTo(ChronoUnit.MILLIS), oldUser))
-    } yield user
+      } yield user).flatTap { _ =>
+        VinylDNS.logResult(logger, header, startNs, 200, common)
+        IO.unit
+      }
+    }
 
   def getUserByKey(key: String): IO[Option[User]] =
-    users.getUserByAccessKey(key)
+    {
+      val header = VinylDNS.operationKeyword("GET", "users/access-key")
+      val common = Seq("backend.method" -> "GET", "backend.path" -> "users/access-key")
+      val startNs = VinylDNS.logStart(logger, header, common)
+      users.getUserByAccessKey(key).flatTap { result =>
+        VinylDNS.logResult(
+          logger,
+          header,
+          startNs,
+          if (result.isDefined) 200 else 404,
+          common,
+          successWhen = _ == 200
+        )
+        IO.unit
+      }
+    }
 
   def getAllUsers: IO[List[User]] =
-    users.getAllUsers
+    {
+      val header = VinylDNS.operationKeyword("GET", "users/all")
+      val common = Seq("backend.method" -> "GET", "backend.path" -> "users/all")
+      val startNs = VinylDNS.logStart(logger, header, common)
+      users.getAllUsers.flatTap { result =>
+        VinylDNS.logResult(
+          logger,
+          header,
+          startNs,
+          200,
+          common,
+          extraFields = Seq("count" -> result.size.toString)
+        )
+        IO.unit
+      }
+    }
 
   def lockUsers(usersToLock: List[User]): IO[List[User]] = {
+    val header = VinylDNS.operationKeyword("PUT", "users/lock")
+    val common = Seq("backend.method" -> "PUT", "backend.path" -> "users/lock", "count" -> usersToLock.size.toString)
+    val startNs = VinylDNS.logStart(logger, header, common)
     val currentTime = Instant.now.truncatedTo(ChronoUnit.MILLIS)
     for {
       lockedUsers <- users.save(usersToLock.map(_.copy(lockStatus = LockStatus.Locked)))
@@ -72,6 +139,9 @@ class UserAccountAccessor @Inject() (users: UserRepository, changes: UserChangeR
             changes.save(UserChange.UpdateUser(newUser, "system", currentTime, oldUser))
         }
         .parSequence
+      _ <- IO {
+        VinylDNS.logResult(logger, header, startNs, 200, common)
+      }
     } yield lockedUsers
   }
 }

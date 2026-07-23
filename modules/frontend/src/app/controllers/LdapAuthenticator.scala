@@ -275,24 +275,59 @@ class LdapAuthenticator(
     }
 
   def authenticate(username: String, password: String): Either[LdapException, LdapUserDetails] =
-    // Need to check domains here due to recursive nature of findUserDetails
-    if (searchBase.isEmpty) Left(NoLdapSearchDomainsConfigured())
-    else
-      findUserDetails(searchBase, username, authenticator.authenticate(_, username, password), true)
+    {
+      val header = VinylDNS.operationKeyword("POST", "ldap/authenticate")
+      val common = Seq("backend.method" -> "POST", "backend.path" -> "ldap/authenticate", "user" -> username)
+      val startNs = VinylDNS.logStart(logger, header, common)
+      val result =
+        if (searchBase.isEmpty) Left(NoLdapSearchDomainsConfigured())
+        else findUserDetails(searchBase, username, authenticator.authenticate(_, username, password), true)
+      VinylDNS.logResult(
+        logger,
+        header,
+        startNs,
+        if (result.isRight) 200 else 401,
+        common,
+        successWhen = _ == 200
+      )
+      result
+    }
 
   def lookup(username: String): Either[LdapException, LdapUserDetails] =
-    // Need to check domains here due to recursive nature of findUserDetails
-    if (searchBase.isEmpty) Left(NoLdapSearchDomainsConfigured())
-    else
-      findUserDetails(searchBase, username, authenticator.lookup(_, username, serviceAccount), true)
+    {
+      val header = VinylDNS.operationKeyword("GET", "ldap/lookup")
+      val common = Seq("backend.method" -> "GET", "backend.path" -> "ldap/lookup", "user" -> username)
+      val startNs = VinylDNS.logStart(logger, header, common)
+      val result =
+        if (searchBase.isEmpty) Left(NoLdapSearchDomainsConfigured())
+        else findUserDetails(searchBase, username, authenticator.lookup(_, username, serviceAccount), true)
+      VinylDNS.logResult(
+        logger,
+        header,
+        startNs,
+        if (result.isRight) 200 else 404,
+        common,
+        successWhen = _ == 200
+      )
+      result
+    }
 
   def healthCheck(): HealthCheck =
     IO {
+      val header = VinylDNS.operationKeyword("GET", "ldap/health")
+      val common = Seq("backend.method" -> "GET", "backend.path" -> "ldap/health")
+      val startNs = VinylDNS.logStart(logger, header, common)
       searchBase.headOption
         .map(authenticator.lookup(_, "healthlookup", serviceAccount)) match {
-        case Some(Left(_: UserDoesNotExistException)) => ().asRight
-        case Some(Left(e)) => e.asLeft
-        case _ => ().asRight
+        case Some(Left(_: UserDoesNotExistException)) =>
+          VinylDNS.logResult(logger, header, startNs, 200, common)
+          ().asRight
+        case Some(Left(e)) =>
+          VinylDNS.logFailure(logger, header, startNs, e, common)
+          e.asLeft
+        case _ =>
+          VinylDNS.logResult(logger, header, startNs, 200, common)
+          ().asRight
       }
     }.asHealthCheck(classOf[LdapAuthenticator])
 

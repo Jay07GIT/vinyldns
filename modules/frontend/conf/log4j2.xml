@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration>
+<Configuration status="warn">
     <Appenders>
         <Console name="CONSOLE" target="SYSTEM_OUT">
             <EcsLayout
@@ -7,19 +7,65 @@
                     serviceNodeName="vinyldns-frontend"
                     eventDataset="vinyldns-frontend"
                     includeOrigin="true"
-            />
+            >
+                <KeyValuePair key="service.type" value="FRONTEND"/>
+            </EcsLayout>
         </Console>
-    </Appenders>
-    <Loggers>
-        <logger name="play" level="INFO" />
-        <logger name="application" level="DEBUG" />
-        <logger name="com.zaxxer.hikari" level="ERROR">
-            <AppenderRef ref="CONSOLE"/>
-        </logger>
 
+        <!-- All logs (INFO+) — daily rolling, gzip compressed -->
+        <RollingFile name="PORTAL_FILE"
+                     fileName="logs/frontend/portal.log"
+                     filePattern="logs/frontend/portal-%d{yyyy-MM-dd}-%i.log.gz">
+            <EcsLayout
+                    serviceName="vinyldns-frontend"
+                    serviceNodeName="vinyldns-frontend"
+                    eventDataset="vinyldns-frontend"
+                    includeOrigin="true"
+            >
+                <KeyValuePair key="service.type" value="FRONTEND"/>
+            </EcsLayout>
+            <!-- Only INFO and above reach the file -->
+            <ThresholdFilter level="INFO" onMatch="ACCEPT" onMismatch="DENY"/>
+            <Policies>
+                <SizeBasedTriggeringPolicy size="10 MB"/>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+
+        <!-- Async wrapper — buffers log I/O off request threads -->
+        <Async name="AsyncRootAppender"
+               includeLocation="true"
+               bufferSize="8192"
+               blocking="true">
+            <AppenderRef ref="CONSOLE"/>
+            <AppenderRef ref="PORTAL_FILE"/>
+        </Async>
+    </Appenders>
+
+    <Loggers>
+        <Logger name="play" level="INFO"/>
+        <Logger name="application" level="DEBUG"/>
+
+        <!-- Suppress noisy Akka internals -->
+        <Logger name="akka.cluster.ClusterHeartbeatSender" level="off"/>
+        <Logger name="akka" level="warn"/>
+
+        <!-- Suppress Play/Netty/WS internal noise -->
+        <Logger name="io.netty" level="warn"/>
+        <Logger name="play.api.libs.ws" level="warn"/>
+        <Logger name="play.core.server" level="warn"/>
+
+        <!-- Memory stats warnings only -->
+        <Logger name="MemStats" level="warn"/>
+
+        <!-- HikariCP: warnings only, no double-logging via root -->
+        <Logger name="com.zaxxer.hikari" level="warn" additivity="false">
+            <AppenderRef ref="AsyncRootAppender"/>
+        </Logger>
 
         <Root level="INFO">
-            <AppenderRef ref="CONSOLE"/>
+            <AppenderRef ref="AsyncRootAppender"/>
         </Root>
     </Loggers>
 </Configuration>
