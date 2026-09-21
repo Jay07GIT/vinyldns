@@ -1,7 +1,8 @@
 SHELL=bash
 IMAGE_NAME=vinyldns-api-test
 ROOT_DIR:=$(shell dirname $(realpath  $(lastword $(MAKEFILE_LIST))))
-RELATIVE_ROOT_DIR:=$(shell realpath --relative-to=../../.. $(ROOT_DIR))
+# macOS BSD realpath does not support `--relative-to`; this repo layout is stable.
+RELATIVE_ROOT_DIR:=test/api/functional
 
 # Check that the required version of make is being used
 REQ_MAKE_VER:=3.82
@@ -27,9 +28,20 @@ endif
 
 .ONESHELL:
 
-.PHONY: all build run run-local run-deps-bg clean-containers
+.PHONY: all prepare-artifact build run run-local run-deps-bg clean-containers
 
-all: build run
+all: prepare-artifact build run
+
+prepare-artifact:
+	@set -euo pipefail; \
+	cd ../../..; \
+	echo "[prepare-artifact] removing old jar: artifacts/vinyldns-api.jar"; \
+	rm -f artifacts/vinyldns-api.jar; \
+	sbt clean; \
+	env SBT_OPTS="-Xmx2G -Xms512M -Xss2M -XX:MaxMetaspaceSize=2G"; \
+	echo "[prepare-artifact] starting sbt assembly for api project"; \
+	sbt -Dbuild.scalafmtOnCompile=false -Dbuild.lintOnCompile=false ";project api;coverageOff;assembly"; \
+	echo "[prepare-artifact] assembly complete: artifacts/vinyldns-api.jar"
 
 build:
 	@set -euo pipefail
