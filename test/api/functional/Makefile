@@ -27,32 +27,9 @@ endif
 
 .ONESHELL:
 
-.PHONY: all all-local prepare-artifact prepare-artifact-local build run run-local run-deps-bg clean-containers
+.PHONY: all build run run-local run-deps-bg clean-containers
 
-all: prepare-artifact build run
-
-all-local: prepare-artifact-local build run-deps-bg
-
-prepare-artifact:
-	@set -euo pipefail; \
-	cd ../../..; \
-	if [[ -f artifacts/vinyldns-api.jar ]]; then \
-		echo "[prepare-artifact] reusing artifacts/vinyldns-api.jar"; \
-	else \
-		echo "[prepare-artifact] building artifacts/vinyldns-api.jar"; \
-		./build/assemble_api.sh; \
-	fi
-
-prepare-artifact-local:
-	@set -euo pipefail; \
-	cd ../../..; \
-	echo "[prepare-artifact] removing old jar: artifacts/vinyldns-api.jar"; \
-	rm -f artifacts/vinyldns-api.jar; \
-	sbt clean; \
-	env SBT_OPTS="-Xmx2G -Xms512M -Xss2M -XX:MaxMetaspaceSize=2G"; \
-	echo "[prepare-artifact] starting sbt assembly for api project"; \
-	sbt -Dbuild.scalafmtOnCompile=false -Dbuild.lintOnCompile=false ";project api;coverageOff;assembly"; \
-	echo "[prepare-artifact] assembly complete: artifacts/vinyldns-api.jar"
+all: build run
 
 build:
 	@set -euo pipefail
