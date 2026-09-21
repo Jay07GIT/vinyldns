@@ -28,11 +28,23 @@ endif
 
 .ONESHELL:
 
-.PHONY: all prepare-artifact build run run-local run-deps-bg clean-containers
+.PHONY: all all-local prepare-artifact prepare-artifact-local build run run-local run-deps-bg clean-containers
 
 all: prepare-artifact build run
 
+all-local: prepare-artifact-local build run
+
 prepare-artifact:
+	@set -euo pipefail; \
+	cd ../../..; \
+	if [[ -f artifacts/vinyldns-api.jar ]]; then \
+		echo "[prepare-artifact] reusing artifacts/vinyldns-api.jar"; \
+	else \
+		echo "[prepare-artifact] building artifacts/vinyldns-api.jar"; \
+		./build/assemble_api.sh; \
+	fi
+
+prepare-artifact-local:
 	@set -euo pipefail; \
 	cd ../../..; \
 	echo "[prepare-artifact] removing old jar: artifacts/vinyldns-api.jar"; \
