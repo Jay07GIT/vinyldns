@@ -32,7 +32,7 @@ endif
 
 all: prepare-artifact build run
 
-all-local: prepare-artifact-local build run
+all-local: prepare-artifact-local build run-deps-bg
 
 prepare-artifact:
 	@set -euo pipefail; \
