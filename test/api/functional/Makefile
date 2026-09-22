@@ -34,7 +34,7 @@ endif
 
 all: build run
 
-all-local: prepare-artifact-local build run-deps-bg
+all-local: prepare-artifact-local build run
 
 prepare-artifact:
 	@set -euo pipefail; \
@@ -52,20 +52,31 @@ prepare-artifact-local:
 	echo "[prepare-artifact] removing old jar: artifacts/vinyldns-api.jar"; \
 	rm -f artifacts/vinyldns-api.jar; \
 	sbt clean; \
-	env SBT_OPTS="-Xmx2G -Xms512M -Xss2M -XX:MaxMetaspaceSize=2G"; \
+	export SBT_OPTS="-Xmx2G -Xms512M -Xss2M -XX:MaxMetaspaceSize=2G"; \
 	echo "[prepare-artifact] starting sbt assembly for api project"; \
 	sbt -Dbuild.scalafmtOnCompile=false -Dbuild.lintOnCompile=false ";project api;coverageOff;assembly"; \
 	echo "[prepare-artifact] assembly complete: artifacts/vinyldns-api.jar"
 
 build:
-	@set -euo pipefail
-	cd ../../..
-	docker build -t $(IMAGE_NAME) $(DOCKER_PARAMS)--build-arg DOCKERFILE_PATH="$(RELATIVE_ROOT_DIR)" -f "$(ROOT_DIR)/Dockerfile" .
+	@set -euo pipefail; \
+	cd ../../..; \
+	docker build -t $(IMAGE_NAME) $(DOCKER_PARAMS) --build-arg DOCKERFILE_PATH="$(RELATIVE_ROOT_DIR)" -f "$(ROOT_DIR)/Dockerfile" .
 
 run:
-	@set -euo pipefail
-	USE_TTY="" && test -t 1 && USE_TTY="-t"
+	@set -euo pipefail; \
+	USE_TTY=""; \
+	test -t 1 && USE_TTY="-t"; \
 	docker run -i $${USE_TTY} --rm $(DOCKER_PARAMS) -e API_TIMEOUT=$(API_TIMEOUT) -p 9000:9000 -p 19001-19003:19001-19003 -p 19001:19001/udp $(IMAGE_NAME) $(ARG_SEPARATOR) $(WITH_ARGS)
+
+# Runs tests with bind-mounted functional test files for iterative development
+# Allows editing tests without rebuilding the Docker image
+run-local: prepare-artifact build
+	@set -euo pipefail; \
+	USE_TTY=""; \
+	test -t 1 && USE_TTY="-t"; \
+	docker run -i $${USE_TTY} --rm $(DOCKER_PARAMS) -e API_TIMEOUT=$(API_TIMEOUT) \
+		-v "$(ROOT_DIR)/../../modules/api/src/test/functional:/functional_test:ro" \
+		-p 9000:9000 -p 19001-19003:19001-19003 -p 19001:19001/udp $(IMAGE_NAME) $(ARG_SEPARATOR) $(WITH_ARGS)
 
 # Runs the dependencies for the functional test in the background
 # This is useful when running the tests on your host machine against the API in a container
@@ -75,11 +86,6 @@ run-deps-bg:
 	docker rm $(IMAGE_NAME) &> /dev/null || true
 	USE_TTY="" && test -t 1 && USE_TTY="-t"
 	docker run -d $${USE_TTY} --name $(IMAGE_NAME) $(DOCKER_PARAMS) -e API_TIMEOUT=$(API_TIMEOUT) --entrypoint "/run-deps.sh" -p 9000:9000 -p 19001-19003:19001-19003 -p 19001:19001/udp $(IMAGE_NAME)
-
-run-local:
-	@set -euo pipefail
-	USE_TTY="" && test -t 1 && USE_TTY="-t"
-	docker run -i $${USE_TTY} --rm $(DOCKER_PARAMS) -e API_TIMEOUT=$(API_TIMEOUT) -p 9000:9000 -p 19001-19003:19001-19003 -p 19001:19001/udp -v "$(ROOT_DIR)/../../../modules/api/src/test/functional:/functional_test" $(IMAGE_NAME) -- $(WITH_ARGS)
 
 clean-containers:
 	@set -euo pipefail

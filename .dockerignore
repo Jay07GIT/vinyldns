@@ -16,3 +16,4 @@ img/
 **/.env
 modules/portal/node_modules/
 **/sootOutput/
+**/node_modules/
