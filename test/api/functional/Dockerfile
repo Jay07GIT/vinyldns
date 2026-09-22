@@ -30,4 +30,8 @@ RUN mkdir -p /localstack && touch /localstack/localstack.log /opt/vinyldns/vinyl
 # Copy over the functional tests
 COPY  modules/api/src/test/functional /functional_test
 
-ENTRYPOINT ["/bin/bash", "-c", "/initialize.sh bind localstack vinyldns-api mysql && { /functional_test/run.sh \"$@\" || { cat /opt/vinyldns/vinyldns.log && exit 1; }; }"]
+# Waits for localstack's lazily-initialized SQS backend before starting the API
+COPY "${DOCKERFILE_PATH}/wait-for-sqs.sh" "${DOCKERFILE_PATH}/run-deps.sh" /
+RUN chmod +x /wait-for-sqs.sh /run-deps.sh
+
+ENTRYPOINT ["/bin/bash", "-c", "/initialize.sh deps-only && /wait-for-sqs.sh && { echo -n 'Starting VinylDNS API..' && /opt/vinyldns/start_vinyldns_api.sh && echo 'done.'; } && { /functional_test/run.sh \"$@\" || { cat /opt/vinyldns/vinyldns.log && exit 1; }; }"]

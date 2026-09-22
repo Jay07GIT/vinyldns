@@ -32,7 +32,7 @@ endif
 
 .PHONY: all all-local prepare-artifact prepare-artifact-local build run run-local run-deps-bg clean-containers
 
-all: prepare-artifact build run
+all: build run
 
 all-local: prepare-artifact-local build run-deps-bg
 
@@ -74,7 +74,7 @@ run-deps-bg:
 	docker stop $(IMAGE_NAME) &> /dev/null || true
 	docker rm $(IMAGE_NAME) &> /dev/null || true
 	USE_TTY="" && test -t 1 && USE_TTY="-t"
-	docker run -d $${USE_TTY} --name $(IMAGE_NAME) $(DOCKER_PARAMS) -e API_TIMEOUT=$(API_TIMEOUT) --entrypoint "/initialize.sh" -p 9000:9000 -p 19001-19003:19001-19003 -p 19001:19001/udp $(IMAGE_NAME) all tail-logs
+	docker run -d $${USE_TTY} --name $(IMAGE_NAME) $(DOCKER_PARAMS) -e API_TIMEOUT=$(API_TIMEOUT) --entrypoint "/run-deps.sh" -p 9000:9000 -p 19001-19003:19001-19003 -p 19001:19001/udp $(IMAGE_NAME)
 
 run-local:
 	@set -euo pipefail
