@@ -179,23 +179,45 @@ angular.module('controller.groups', []).controller('GroupsController', function 
         });
     });
 
-    // Autocomplete text-highlight
-    $.ui.autocomplete.prototype._renderItem = function(ul, item) {
-        var label = $("<div>").text(String(item.label)).html();
-        var term = String(this.term || "");
-        if (term) {
-            var escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Apply safe text-highlight renderer to MY-GROUPS autocomplete instance only
+    var myGroupAutocomplete = $("#my-group-search-text").autocomplete("instance");
+    if (myGroupAutocomplete) {
+        myGroupAutocomplete._renderItem = function(ul, item) {
+            var label = $("<div>").text(String(item.label)).html();
+            var term = String(this.term || "");
+            if (term) {
+                var escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                label = label.replace(
+                    new RegExp(escapedTerm, "gi"),
+                    "<b>$&</b>"
+                );
+            }
+            return $("<li></li>")
+                .data("ui-autocomplete-item", item.value)
+                .append($("<div></div>").html(label))
+                .appendTo(ul);
+        };
+    }
 
-            label = label.replace(
-                new RegExp(escapedTerm, "gi"),
-                "<b>$&</b>"
-            );
-        }
-        return $("<li></li>")
-            .data("ui-autocomplete-item", item.value)
-            .append($("<div></div>").html(label))
-            .appendTo(ul);
-    };
+    // Apply safe text-highlight renderer to ALL-GROUPS autocomplete instance only
+    var allGroupAutocomplete = $("#all-group-search-text").autocomplete("instance");
+    if (allGroupAutocomplete) {
+        allGroupAutocomplete._renderItem = function(ul, item) {
+            var label = $("<div>").text(String(item.label)).html();
+            var term = String(this.term || "");
+            if (term) {
+                var escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                label = label.replace(
+                    new RegExp(escapedTerm, "gi"),
+                    "<b>$&</b>"
+                );
+            }
+            return $("<li></li>")
+                .data("ui-autocomplete-item", item.value)
+                .append($("<div></div>").html(label))
+                .appendTo(ul);
+        };
+    }
 
     $scope.createGroup = function (name, email, description) {
         //prevent user executing service call multiple times
