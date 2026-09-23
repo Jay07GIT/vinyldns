@@ -28,6 +28,7 @@ describe('Controller: GroupsController', function () {
         this.controllerFactory = $controller;
         this.scope = $rootScope.$new();
         this.groupsService = groupsService;
+        this.profileService = profileService;
         this.utilityService = utilityService;
         this.q = $q;
         this.pagingService = pagingService;
@@ -79,6 +80,49 @@ describe('Controller: GroupsController', function () {
 
         expect(getGroups.calls.count()).toBe(2);
         expect(this.scope.groups.items).toBe("all my groups");
+    });
+
+    it('refresh calls profileService.searchUsersByName with the query when searching by user', function () {
+        this.scope.isSearchByUser = true;
+        this.scope.query = 'frodo';
+
+        var searchUsersByName = spyOn(this.profileService, 'searchUsersByName')
+            .and.stub()
+            .and.returnValue(this.q.when({ data: { groupMap: {} } }));
+
+        this.scope.refresh();
+        this.scope.$digest();
+
+        expect(searchUsersByName.calls.count()).toBe(1);
+        expect(searchUsersByName.calls.mostRecent().args).toEqual(['frodo']);
+    });
+
+    it('refresh strips wildcard characters from the query before calling profileService.searchUsersByName', function () {
+        this.scope.isSearchByUser = true;
+        this.scope.query = '*frodo*';
+
+        var searchUsersByName = spyOn(this.profileService, 'searchUsersByName')
+            .and.stub()
+            .and.returnValue(this.q.when({ data: { groupMap: {} } }));
+
+        this.scope.refresh();
+        this.scope.$digest();
+
+        expect(searchUsersByName.calls.mostRecent().args).toEqual(['frodo']);
+    });
+
+    it('refresh does not call profileService.searchUsersByName when not searching by user', function () {
+        this.scope.isSearchByUser = false;
+        this.scope.query = '';
+
+        var searchUsersByName = spyOn(this.profileService, 'searchUsersByName')
+            .and.stub()
+            .and.returnValue(this.q.when({ data: { groupMap: {} } }));
+
+        this.scope.refresh();
+        this.scope.$digest();
+
+        expect(searchUsersByName.calls.count()).toBe(0);
     });
 
     it('createGroup correctly calls utilityService when passing createGroup', function() {

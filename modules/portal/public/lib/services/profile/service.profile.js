@@ -30,6 +30,10 @@ angular.module('service.profile', [])
             return $http.get('/api/users/' + encodeURIComponent(userId));
         }
 
+        this.searchUsersByName = function(pattern){
+            return $http.get('/api/users/search/' + encodeURIComponent(pattern));
+        }
+
         this.regenerateCredentials = function(){
             return $http.post('/regenerate-creds', {}, {headers: utilityService.getCsrfHeader()});
         }

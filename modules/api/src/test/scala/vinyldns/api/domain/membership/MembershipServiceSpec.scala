@@ -1421,5 +1421,36 @@ class MembershipServiceSpec
         error shouldBe a[UserNotFoundError]
       }
     }
+
+    "search users" should {
+      "return the matched user's info" in {
+        doReturn(IO.pure(Some(okUser))).when(mockUserRepo).searchUsersByName(anyString)
+        doReturn(IO.pure(Set(okGroup.id))).when(mockMembershipRepo).getGroupsForUser(anyString)
+        doReturn(IO.pure(Set(okGroup))).when(mockGroupRepo).getGroups(any[Set[String]])
+
+        val resultEither = underTest.searchUsers(okUser.userName, okAuth).value.unsafeRunSync()
+
+        val result = resultEither match {
+          case Right(value) => value
+          case Left(err)    => fail(s"Expected success but got error: $err")
+        }
+
+        result.id shouldBe okUser.id
+        result.userName.get shouldBe okUser.userName
+        result.groupMap.headOption match {
+          case Some((id, name)) =>
+            id shouldBe okGroup.id
+            name shouldBe okGroup.name
+          case None =>
+            fail("groupMap is empty or null")
+        }
+      }
+
+      "return an error if no user matches the search pattern" in {
+        doReturn(IO.pure(None)).when(mockUserRepo).searchUsersByName(anyString)
+        val error = underTest.searchUsers("nomatch", okAuth).value.unsafeRunSync().swap.toOption.get
+        error shouldBe a[UserNotFoundError]
+      }
+    }
   }
 }

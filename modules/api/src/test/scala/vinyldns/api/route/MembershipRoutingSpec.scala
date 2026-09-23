@@ -874,4 +874,37 @@ class MembershipRoutingSpec
       }
     }
   }
+
+  "GET search users" should {
+    "return a 200 response with the matched user info" in {
+      doReturn(result(dummyUserResponseInfo))
+        .when(membershipService)
+        .searchUsers("dummy", okAuth)
+      Get("/users/search/dummy") ~> membershipRoute ~> check {
+        status shouldBe StatusCodes.OK
+        val result = responseAs[UserResponseInfo]
+        result.id shouldBe dummyUserResponseInfo.id
+      }
+    }
+
+    "return a 200 response with the groupMap for the matched user" in {
+      doReturn(result(dummyUserResponseInfo))
+        .when(membershipService)
+        .searchUsers("dummy", okAuth)
+      Get("/users/search/dummy") ~> membershipRoute ~> check {
+        status shouldBe StatusCodes.OK
+        val result = responseAs[UserResponseInfo]
+        result.groupMap shouldBe dummyUserResponseInfo.groupMap
+      }
+    }
+
+    "return a 404 Not Found response when no user matches the search pattern" in {
+      doReturn(result(UserNotFoundError("fail")))
+        .when(membershipService)
+        .searchUsers("nomatch", okAuth)
+      Get("/users/search/nomatch") ~> membershipRoute ~> check {
+        status shouldBe StatusCodes.NotFound
+      }
+    }
+  }
 }

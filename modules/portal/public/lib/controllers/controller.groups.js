@@ -108,7 +108,7 @@ angular.module('controller.groups', []).controller('GroupsController', function 
             if ($scope.isSearchByUser) {
                 //USER SEARCH
                 $.ajax({
-                    url: "/api/users/" + encodeURIComponent(request.term),
+                    url: "/api/users/search/" + encodeURIComponent(request.term),
                     dataType: "json",
                     success: function (data) {
                         const search = JSON.parse(JSON.stringify(data));
@@ -301,10 +301,10 @@ $scope.refresh = function () {
             }
 
             return profileService
-                .getUserDataById(userNameQuery)
+                .searchUsersByName(userNameQuery)
                 .then(success)
                 .catch(function (error) {
-                    handleError(error, 'profileService::getUserDataById-failure');
+                    handleError(error, 'profileService::searchUsersByName-failure');
                 });
 
         } catch (error) {

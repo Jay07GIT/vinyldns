@@ -47,6 +47,10 @@ describe('Service: profileService', function () {
         expect(this.profileService.getUserDataByUsername).toBeDefined();
     });
 
+    it('should have searchUsersByName method', function () {
+        expect(this.profileService.searchUsersByName).toBeDefined();
+    });
+
     it('should have regenerateCredentials method', function () {
         expect(this.profileService.regenerateCredentials()).toBeDefined();
     });
@@ -150,6 +154,38 @@ describe('Service: profileService', function () {
                 done();
             }, function (error) {
                 expect(error.status).toBe(400);
+                done();
+            });
+        this.$httpBackend.flush();
+    });
+
+
+    it('searchUsersByName method should return 200 with a matched user', function (done) {
+        this.$httpBackend.expectGET('/api/users/search/pattern').respond('success');
+        this.profileService.searchUsersByName('pattern')
+            .then(function (response) {
+                expect(response.status).toBe(200);
+                expect(response.data).toBe('success');
+                done();
+            }, function (error) {
+                fail('searchUsersByName expected 200, but got ' + error.status.toString());
+                done();
+            });
+        this.$httpBackend.flush();
+    });
+
+    it('searchUsersByName method should return 404 when no user matches', function (done) {
+        var url = '/api/users/search/:pattern';
+        this.$httpBackend.whenRoute('GET', url)
+            .respond(function () {
+                return [404, 'response body', {}, 'TestPhrase'];
+            });
+        this.profileService.searchUsersByName('nomatch')
+            .then(function (response) {
+                fail('searchUsersByName expected 404, but got ' + response.status.toString());
+                done();
+            }, function (error) {
+                expect(error.status).toBe(404);
                 done();
             });
         this.$httpBackend.flush();

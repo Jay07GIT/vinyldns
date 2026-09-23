@@ -64,7 +64,14 @@ class MySqlUserRepository(cryptoAlgebra: CryptoAlgebra)
     sql"""
          | SELECT data
          |   FROM user
-         |    WHERE id = {id} OR user_name LIKE {userName}
+         |  WHERE ? IN(id, user_name)
+     """.stripMargin
+
+  private final val SEARCH_USER_BY_NAME =
+    sql"""
+         | SELECT data
+         |   FROM user
+         |  WHERE user_name LIKE {userName}
      """.stripMargin
 
   private final val BASE_GET_USERS: String =
@@ -180,18 +187,31 @@ class MySqlUserRepository(cryptoAlgebra: CryptoAlgebra)
    */
   def getUserByIdOrName(userIdentifier: String): IO[Option[User]] =
     monitor("repo.User.getUser") {
-      val userInfo=
-        if (userIdentifier.endsWith("%") || userIdentifier.endsWith("*"))
-        userIdentifier.dropRight(1)
-        else if (userIdentifier.startsWith("%") ||userIdentifier.startsWith("*"))
-          userIdentifier.drop(1)
-        else
-        userIdentifier
-      logger.debug(s"Getting user with id: $userIdentifier")
+      logger.debug(s"Getting user with id or name: $userIdentifier")
       IO {
         DB.readOnly { implicit s =>
           GET_USER_BY_ID_OR_NAME
-            .bindByName('id -> userInfo,'userName ->s"%$userInfo%")
+            .bind(userIdentifier)
+            .map(toUser(1))
+            .first()
+            .apply()
+        }
+      }
+    }
+
+  def searchUsersByName(pattern: String): IO[Option[User]] =
+    monitor("repo.User.searchUsersByName") {
+      val searchPattern = if (pattern.endsWith("%") || pattern.endsWith("*"))
+        pattern.dropRight(1)
+      else if (pattern.startsWith("%") || pattern.startsWith("*"))
+        pattern.drop(1)
+      else
+        pattern
+      logger.debug(s"Searching user with pattern: $pattern")
+      IO {
+        DB.readOnly { implicit s =>
+          SEARCH_USER_BY_NAME
+            .bindByName('userName -> s"%$searchPattern%")
             .map(toUser(1))
             .first()
             .apply()
