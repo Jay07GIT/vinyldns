@@ -105,6 +105,7 @@ object UserInfo {
 case class UserResponseInfo(
       id: String,
       userName: Option[String] = None,
+      groupId: Set[String] = Set.empty,
       groupMap: Map[String, String] = Map.empty
 )
 
@@ -113,6 +114,7 @@ object UserResponseInfo {
     UserResponseInfo(
       id = user.id,
       userName = Some(user.userName),
+      groupId = Set(group.id),
       groupMap = Map(group.id -> group.name)
     )
 }

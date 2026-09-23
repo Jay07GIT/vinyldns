@@ -862,6 +862,7 @@ class MembershipRoutingSpec
         status shouldBe StatusCodes.OK
         val result = responseAs[UserResponseInfo]
         result.groupMap shouldBe dummyUserResponseInfo.groupMap
+        result.groupId shouldBe dummyUserResponseInfo.groupId
       }
     }
 
@@ -895,6 +896,7 @@ class MembershipRoutingSpec
         status shouldBe StatusCodes.OK
         val result = responseAs[UserResponseInfo]
         result.groupMap shouldBe dummyUserResponseInfo.groupMap
+        result.groupId shouldBe dummyUserResponseInfo.groupId
       }
     }
 

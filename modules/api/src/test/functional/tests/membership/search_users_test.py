@@ -12,6 +12,7 @@ def test_search_users_success(shared_zone_test_context):
 
     assert_that(result["id"], is_("ok"))
     assert_that(result["userName"], is_("ok"))
+    assert_that(result["groupId"], has_item(ok_group["id"]))
     assert_that(result["groupMap"], has_key(ok_group["id"]))
     assert_that(result["groupMap"][ok_group["id"]], is_(ok_group["name"]))
 

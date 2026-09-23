@@ -34,6 +34,18 @@ angular.module('service.groups', [])
             return url;
         };
 
+        // Shows the loading modal for the duration of httpPromise, hiding it on success or failure
+        this.withLoader = function (httpPromise) {
+            var loader = $("#loader");
+            loader.modal({
+                          backdrop: "static", //remove ability to close modal with click
+                          keyboard: false, //remove option to close with keyboard
+                          show: true //Display loader!
+                          });
+            httpPromise.then(() => loader.modal("hide"), () => loader.modal("hide"));
+            return httpPromise;
+        };
+
         this.createGroup = function (data) {
             var url = '/api/groups';
             return $http.post(url, data, {headers: utilityService.getCsrfHeader()});
@@ -41,16 +53,7 @@ angular.module('service.groups', [])
 
         this.getGroup = function (id) {
             var url = '/api/groups/' + id;
-            let loader = $("#loader");
-            loader.modal({
-                          backdrop: "static", //remove ability to close modal with click
-                          keyboard: false, //remove option to close with keyboard
-                          show: true //Display loader!
-                          })
-            let promis =  $http.get(url);
-            // Hide loader when api gets response
-            promis.then(()=>loader.modal("hide"), ()=>loader.modal("hide"))
-            return promis;
+            return this.withLoader($http.get(url));
         };
         this.listEmailDomains = function () {
                     var url = '/api/groups/valid/domains'
@@ -70,16 +73,7 @@ angular.module('service.groups', [])
         this.getGroupMemberList = function (uuid) {
             var url = '/api/groups/' + uuid + '/members';
             url = this.urlBuilder(url, { maxItems: 1000 });
-            let loader = $("#loader");
-            loader.modal({
-                          backdrop: "static", //remove ability to close modal with click
-                          keyboard: false, //remove option to close with keyboard
-                          show: true //Display loader!
-                          })
-            let promis =  $http.get(url);
-            // Hide loader when api gets response
-            promis.then(()=>loader.modal("hide"), ()=>loader.modal("hide"))
-            return promis;
+            return this.withLoader($http.get(url));
         };
 
         this.addGroupMember = function (groupId, id, data) {
@@ -103,16 +97,7 @@ angular.module('service.groups', [])
             };
             var url = '/api/groups';
             url = this.urlBuilder(url, params);
-            let loader = $("#loader");
-            loader.modal({
-                          backdrop: "static", //remove ability to close modal with click
-                          keyboard: false, //remove option to close with keyboard
-                          show: true //Display loader!
-                          })
-            let promis =  $http.get(url);
-            // Hide loader when api gets response
-            promis.then(()=>loader.modal("hide"), ()=>loader.modal("hide"))
-            return promis;
+            return this.withLoader($http.get(url));
         };
 
         this.getGroupsAbridged = function (limit, startFrom, ignoreAccess, query) {
@@ -128,46 +113,19 @@ angular.module('service.groups', [])
             };
             var url = '/api/groups';
             url = this.urlBuilder(url, params);
-            let loader = $("#loader");
-            loader.modal({
-                          backdrop: "static", //remove ability to close modal with click
-                          keyboard: false, //remove option to close with keyboard
-                          show: true //Display loader!
-                          })
-            let promis =  $http.get(url);
-            // Hide loader when api gets response
-            promis.then(()=>loader.modal("hide"), ()=>loader.modal("hide"))
-            return promis;
+            return this.withLoader($http.get(url));
         };
 
         this.getGroupListChanges = function (id, count, groupId) {
             var url = '/api/groups/' + groupId + '/changes';
             url = this.urlBuilder(url, { 'startFrom': id, 'maxItems': count });
-            let loader = $("#loader");
-            loader.modal({
-                          backdrop: "static", //remove ability to close modal with click
-                          keyboard: false, //remove option to close with keyboard
-                          show: true //Display loader!
-                          })
-            let promis =  $http.get(url);
-            // Hide loader when api gets response
-            promis.then(()=>loader.modal("hide"), ()=>loader.modal("hide"))
-            return promis;
+            return this.withLoader($http.get(url));
         };
 
         this.getGroupChanges = function (groupId, count, startFrom) {
             var url = '/api/groups/' + groupId + '/groupchanges';
             url = this.urlBuilder(url, { 'startFrom': startFrom, 'maxItems': count });
-            let loader = $("#loader");
-            loader.modal({
-                          backdrop: "static", //remove ability to close modal with click
-                          keyboard: false, //remove option to close with keyboard
-                          show: true //Display loader!
-                          })
-            let promis =  $http.get(url);
-            // Hide loader when api gets response
-            promis.then(()=>loader.modal("hide"), ()=>loader.modal("hide"))
-            return promis;
+            return this.withLoader($http.get(url));
         };
 
         this.getGroupsStored = function () {

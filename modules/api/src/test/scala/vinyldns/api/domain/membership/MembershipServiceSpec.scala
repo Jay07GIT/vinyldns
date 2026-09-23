@@ -1406,6 +1406,7 @@ class MembershipServiceSpec
 
         result.id shouldBe okUser.id
         result.userName.get shouldBe okUser.userName
+        result.groupId shouldBe Set(okGroup.id)
         result.groupMap.headOption match {
           case Some((id, name)) =>
             id shouldBe okGroup.id
@@ -1437,6 +1438,7 @@ class MembershipServiceSpec
 
         result.id shouldBe okUser.id
         result.userName.get shouldBe okUser.userName
+        result.groupId shouldBe Set(okGroup.id)
         result.groupMap.headOption match {
           case Some((id, name)) =>
             id shouldBe okGroup.id

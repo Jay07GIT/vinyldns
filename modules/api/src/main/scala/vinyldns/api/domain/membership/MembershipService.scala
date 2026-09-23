@@ -370,6 +370,7 @@ class MembershipService(
       } yield UserResponseInfo(
         id       = user.id,
         userName = Some(user.userName),
+        groupId  = group.map(_.id),
         groupMap = group.map(g => g.id -> g.name).toMap
       )
 
@@ -389,6 +390,7 @@ class MembershipService(
     } yield UserResponseInfo(
       id       = user.id,
       userName = Some(user.userName),
+      groupId  = group.map(_.id),
       groupMap = group.map(g => g.id -> g.name).toMap
     )
 
