@@ -158,6 +158,27 @@ angular.module('controller.groups', []).controller('GroupsController', function 
         }
     });
 
+    // Handle tab switching - clear search by user checkbox and search text when switching tabs
+    $('a[href="#myGroups"]').on('shown.bs.tab', function (e) {
+        $scope.$apply(function() {
+            if ($scope.isSearchByUser) {
+                $scope.isSearchByUser = false;
+                $scope.query = "";
+                $("#all-group-search-text").val("");
+            }
+        });
+    });
+
+    $('a[href="#allGroups"]').on('shown.bs.tab', function (e) {
+        $scope.$apply(function() {
+            if ($scope.isSearchByUser) {
+                $scope.isSearchByUser = false;
+                $scope.query = "";
+                $("#all-group-search-text").val("");
+            }
+        });
+    });
+
     // Autocomplete text-highlight
     $.ui.autocomplete.prototype._renderItem = function(ul, item) {
         var label = $("<div>").text(String(item.label)).html();
