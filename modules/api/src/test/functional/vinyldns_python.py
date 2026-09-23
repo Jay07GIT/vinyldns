@@ -4,7 +4,7 @@ import time
 import traceback
 from json import JSONDecodeError
 from typing import Iterable
-from urllib.parse import urlparse, urlsplit, parse_qs, urljoin
+from urllib.parse import urlparse, urlsplit, parse_qs, urljoin, quote
 
 import requests
 from hamcrest import *
@@ -351,7 +351,7 @@ class VinylDNSClient(object):
         :param pattern: the username search pattern
         :return: the user response info json, including the groups the matched user belongs to
         """
-        url = urljoin(self.index_url, "/users/search/" + pattern)
+        url = urljoin(self.index_url, "/users/search/" + quote(pattern, safe=""))
         response, data = self.make_request(url, "GET", self.headers, not_found_ok=True, **kwargs)
 
         return data

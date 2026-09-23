@@ -88,7 +88,7 @@ describe('Controller: GroupsController', function () {
 
         var searchUsersByName = spyOn(this.profileService, 'searchUsersByName')
             .and.stub()
-            .and.returnValue(this.q.when({ data: { groupMap: {} } }));
+            .and.returnValue(this.q.when({ data: [] }));
 
         this.scope.refresh();
         this.scope.$digest();
@@ -103,7 +103,7 @@ describe('Controller: GroupsController', function () {
 
         var searchUsersByName = spyOn(this.profileService, 'searchUsersByName')
             .and.stub()
-            .and.returnValue(this.q.when({ data: { groupMap: {} } }));
+            .and.returnValue(this.q.when({ data: [] }));
 
         this.scope.refresh();
         this.scope.$digest();
@@ -117,12 +117,39 @@ describe('Controller: GroupsController', function () {
 
         var searchUsersByName = spyOn(this.profileService, 'searchUsersByName')
             .and.stub()
-            .and.returnValue(this.q.when({ data: { groupMap: {} } }));
+            .and.returnValue(this.q.when({ data: [] }));
 
         this.scope.refresh();
         this.scope.$digest();
 
         expect(searchUsersByName.calls.count()).toBe(0);
+    });
+
+    it('refresh unions groups across every matched user instead of dropping non-first matches', function (done) {
+        this.scope.isSearchByUser = true;
+        this.scope.query = 'jacob';
+
+        spyOn(this.profileService, 'searchUsersByName')
+            .and.stub()
+            .and.returnValue(this.q.when({
+                data: [
+                    { userName: 'sjacob1', groupMap: { 'group-1': 'Group One' } },
+                    { userName: 'tjacob1', groupMap: { 'group-2': 'Group Two' } }
+                ]
+            }));
+        var getGroup = spyOn(this.groupsService, 'getGroup')
+            .and.callFake(function (groupId) {
+                return Promise.resolve({ data: { id: groupId } });
+            });
+
+        this.scope.refresh();
+        this.scope.$digest();
+
+        setTimeout(function () {
+            expect(getGroup.calls.count()).toBe(2);
+            expect(getGroup.calls.allArgs()).toEqual([['group-1'], ['group-2']]);
+            done();
+        }, 0);
     });
 
     it('createGroup correctly calls utilityService when passing createGroup', function() {

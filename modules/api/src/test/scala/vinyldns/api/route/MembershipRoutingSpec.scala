@@ -877,26 +877,32 @@ class MembershipRoutingSpec
   }
 
   "GET search users" should {
-    "return a 200 response with the matched user info" in {
-      doReturn(result(dummyUserResponseInfo))
+    "return a 200 response with every matched user's info" in {
+      doReturn(result(List(dummyUserResponseInfo)))
         .when(membershipService)
         .searchUsers("dummy", okAuth)
       Get("/users/search/dummy") ~> membershipRoute ~> check {
         status shouldBe StatusCodes.OK
-        val result = responseAs[UserResponseInfo]
-        result.id shouldBe dummyUserResponseInfo.id
+        val result = responseAs[List[UserResponseInfo]]
+        result.map(_.id) shouldBe List(dummyUserResponseInfo.id)
       }
     }
 
-    "return a 200 response with the groupMap for the matched user" in {
-      doReturn(result(dummyUserResponseInfo))
+    "return a 200 response with the groupMap for every matched user" in {
+      doReturn(result(List(dummyUserResponseInfo, okUserResponseInfo)))
         .when(membershipService)
-        .searchUsers("dummy", okAuth)
-      Get("/users/search/dummy") ~> membershipRoute ~> check {
+        .searchUsers("o", okAuth)
+      Get("/users/search/o") ~> membershipRoute ~> check {
         status shouldBe StatusCodes.OK
-        val result = responseAs[UserResponseInfo]
-        result.groupMap shouldBe dummyUserResponseInfo.groupMap
-        result.groupId shouldBe dummyUserResponseInfo.groupId
+        val result = responseAs[List[UserResponseInfo]]
+        result.map(_.groupMap) should contain theSameElementsAs List(
+          dummyUserResponseInfo.groupMap,
+          okUserResponseInfo.groupMap
+        )
+        result.map(_.groupId) should contain theSameElementsAs List(
+          dummyUserResponseInfo.groupId,
+          okUserResponseInfo.groupId
+        )
       }
     }
 

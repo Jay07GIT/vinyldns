@@ -87,5 +87,5 @@ trait MembershipServiceAlgebra {
   def searchUsers(
                pattern: String,
                authPrincipal: AuthPrincipal
-             ): Result[UserResponseInfo]
+             ): Result[List[UserResponseInfo]]
 }

@@ -213,8 +213,8 @@ class MembershipRoute(
     path("users" / "search" / Segment) { pattern =>
       (get & monitor("Endpoint.searchUsers")) {
         authenticateAndExecute(membershipService.searchUsers(pattern, _)) {
-          user =>
-            complete(StatusCodes.OK, user)
+          users =>
+            complete(StatusCodes.OK, users)
         }
       }
     } ~

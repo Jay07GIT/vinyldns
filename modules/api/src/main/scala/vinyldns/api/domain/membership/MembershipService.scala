@@ -375,24 +375,27 @@ class MembershipService(
       )
 
   /**
-   * Searches for a User matching the given (possibly wildcarded) name pattern
+   * Searches for all Users whose username matches the given (possibly wildcarded) name pattern
    * @param pattern The username search pattern
-   * @return The matched User's details, including the groups they belong to
+   * @return Each matched User's details, including the groups they belong to
    */
-  def searchUsers(pattern: String, authPrincipal: AuthPrincipal): Result[UserResponseInfo] =
+  def searchUsers(pattern: String, authPrincipal: AuthPrincipal): Result[List[UserResponseInfo]] =
     for {
-      user <- userRepo
-        .searchUsersByName(pattern)
-        .orFail(UserNotFoundError(s"User matching $pattern was not found"))
-        .toResult[User]
-      group <- membershipRepo.getGroupsForUser(user.id).toResult[Set[String]]
-      group <- groupRepo.getGroups(group).toResult[Set[Group]]
-    } yield UserResponseInfo(
-      id       = user.id,
-      userName = Some(user.userName),
-      groupId  = group.map(_.id),
-      groupMap = group.map(g => g.id -> g.name).toMap
-    )
+      users <- userRepo.searchUsersByName(pattern).toResult[List[User]]
+      _ <- users.nonEmpty
+        .failWith(UserNotFoundError(s"User matching $pattern was not found"))
+      results <- users.traverse { user =>
+        for {
+          group <- membershipRepo.getGroupsForUser(user.id).toResult[Set[String]]
+          group <- groupRepo.getGroups(group).toResult[Set[Group]]
+        } yield UserResponseInfo(
+          id       = user.id,
+          userName = Some(user.userName),
+          groupId  = group.map(_.id),
+          groupMap = group.map(g => g.id -> g.name).toMap
+        )
+      }
+    } yield results
 
   def getUsers(
       userIds: Set[String],

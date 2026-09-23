@@ -111,14 +111,18 @@ angular.module('controller.groups', []).controller('GroupsController', function 
                     url: "/api/users/search/" + encodeURIComponent(request.term),
                     dataType: "json",
                     success: function (data) {
-                        const search = JSON.parse(JSON.stringify(data));
-                        const groupMap = search.groupMap || {};
-                        response($.map(Object.entries(groupMap), function ([groupId, groupName]) {
-                            return {
-                                value: search.userName,
-                                label: search.userName + " - " + groupName
-                            };
-                        }));
+                        const matchedUsers = JSON.parse(JSON.stringify(data));
+                        const suggestions = [];
+                        matchedUsers.forEach(function (matchedUser) {
+                            const groupMap = matchedUser.groupMap || {};
+                            Object.entries(groupMap).forEach(function ([groupId, groupName]) {
+                                suggestions.push({
+                                    value: matchedUser.userName,
+                                    label: matchedUser.userName + " - " + groupName
+                                });
+                            });
+                        });
+                        response(suggestions);
                     }
                 });
             } else {
@@ -284,11 +288,15 @@ $scope.refresh = function () {
 
             function success(response) {
                 $scope.response = response.data;
-                const groupMap = $scope.response.groupMap || {};
-                const groupIds = Object.keys(groupMap);
+                const matchedUsers = $scope.response || [];
+
+                // Union the groupIds across every matched user so no matches are dropped
+                const groupIds = Array.from(new Set(
+                    matchedUsers.reduce((ids, matchedUser) =>
+                        ids.concat(Object.keys(matchedUser.groupMap || {})), [])
+                ));
 
                 $log.debug("getGroupsByUser:groupIds: ", groupIds);
-                $log.debug("getGroupsByUser:groupMap:", groupMap);
 
                 const groupPromises = groupIds.map((groupId) =>
                     groupsService.getGroup(groupId).then(result => result.data)

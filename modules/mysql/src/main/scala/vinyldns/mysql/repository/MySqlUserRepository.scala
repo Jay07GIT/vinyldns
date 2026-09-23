@@ -72,6 +72,7 @@ class MySqlUserRepository(cryptoAlgebra: CryptoAlgebra)
          | SELECT data
          |   FROM user
          |  WHERE user_name LIKE {userName}
+         |  ORDER BY user_name
      """.stripMargin
 
   private final val BASE_GET_USERS: String =
@@ -199,7 +200,7 @@ class MySqlUserRepository(cryptoAlgebra: CryptoAlgebra)
       }
     }
 
-  def searchUsersByName(pattern: String): IO[Option[User]] =
+  def searchUsersByName(pattern: String): IO[List[User]] =
     monitor("repo.User.searchUsersByName") {
       val searchPattern = if (pattern.endsWith("%") || pattern.endsWith("*"))
         pattern.dropRight(1)
@@ -213,7 +214,7 @@ class MySqlUserRepository(cryptoAlgebra: CryptoAlgebra)
           SEARCH_USER_BY_NAME
             .bindByName('userName -> s"%$searchPattern%")
             .map(toUser(1))
-            .first()
+            .list()
             .apply()
         }
       }

@@ -151,7 +151,7 @@ trait EmptyUserRepo extends UserRepository {
 
   def getUserByIdOrName(userIdentifier: String): IO[Option[User]] = IO.pure(None)
 
-  def searchUsersByName(pattern: String): IO[Option[User]] = IO.pure(None)
+  def searchUsersByName(pattern: String): IO[List[User]] = IO.pure(List())
 
   def save(user: User): IO[User] = IO.pure(user)
 
